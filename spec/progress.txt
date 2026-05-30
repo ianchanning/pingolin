@@ -1,0 +1,14 @@
+# Project Progress
+
+## Phase 0: The Bridge (Cloudflare Worker Proxy) - COMPLETED
+- [x] Create a minimal Cloudflare Worker to proxy `api.pinboard.in`.
+- [x] Implement transparent header forwarding.
+- [x] Force `User-Agent: PinboardPWA/1.0` to prevent Pinboard API 500 errors.
+- [x] Implement CORS headers for client-side access.
+- [x] Pass through 429 Rate Limit responses.
+
+## Next Step
+- **Phase 1: The Engine (Web Worker & SQLite)**
+    - Initialize `sqlite-wasm` inside a dedicated background Web Worker.
+    - Setup OPFS (Origin Private File System) for durable persistence.
+    - Implement the Relational Schema.

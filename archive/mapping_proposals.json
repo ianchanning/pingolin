@@ -1,0 +1,500 @@
+[
+  {
+    "old_tag": "ai",
+    "count": 1308,
+    "new_tag": "cs.AI",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "programming",
+    "count": 1299,
+    "new_tag": "cs.PL",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "llm",
+    "count": 659,
+    "new_tag": "cs.CL",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "artificial-intelligence",
+    "count": 631,
+    "new_tag": "cs.AI",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "data-science",
+    "count": 418,
+    "new_tag": "cs.LG",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "security",
+    "count": 417,
+    "new_tag": "cs.CR",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "mathematics",
+    "count": 407,
+    "new_tag": "cs.DM",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "statistics",
+    "count": 384,
+    "new_tag": "cs.LG",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "economics",
+    "count": 371,
+    "new_tag": "cs.GT",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "machine-learning",
+    "count": 364,
+    "new_tag": "cs.LG",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "performance",
+    "count": 355,
+    "new_tag": "cs.PF",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "databases",
+    "count": 285,
+    "new_tag": "cs.DB",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "neural-networks",
+    "count": 269,
+    "new_tag": "cs.NE",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "deep-learning",
+    "count": 237,
+    "new_tag": "cs.LG",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "software-engineering",
+    "count": 213,
+    "new_tag": "cs.SE",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "society",
+    "count": 197,
+    "new_tag": "cs.CY",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "internet",
+    "count": 158,
+    "new_tag": "cs.NI",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "finance",
+    "count": 115,
+    "new_tag": "cs.CE",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "Graphics",
+    "count": 113,
+    "new_tag": "cs.GR",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "hardware",
+    "count": 83,
+    "new_tag": "cs.AR",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "libraries",
+    "count": 81,
+    "new_tag": "cs.DL",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "algorithms",
+    "count": 78,
+    "new_tag": "cs.DS",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "languages",
+    "count": 75,
+    "new_tag": "cs.FL",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "Social",
+    "count": 61,
+    "new_tag": "cs.SI",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "computers",
+    "count": 60,
+    "new_tag": "cs.CY",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "architecture",
+    "count": 59,
+    "new_tag": "cs.AR",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "ml",
+    "count": 56,
+    "new_tag": "cs.LG",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "Language",
+    "count": 48,
+    "new_tag": "cs.CL",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "distributed",
+    "count": 41,
+    "new_tag": "cs.DC",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "computing",
+    "count": 40,
+    "new_tag": "cs.DC",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "data-structures",
+    "count": 39,
+    "new_tag": "cs.DS",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "intelligence",
+    "count": 39,
+    "new_tag": "cs.AI",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "networking",
+    "count": 38,
+    "new_tag": "cs.NI",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "nlp",
+    "count": 37,
+    "new_tag": "cs.CL",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "game",
+    "count": 36,
+    "new_tag": "cs.GT",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "cryptography",
+    "count": 27,
+    "new_tag": "cs.CR",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "logic",
+    "count": 27,
+    "new_tag": "cs.LO",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "analysis",
+    "count": 23,
+    "new_tag": "cs.NA",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "stats",
+    "count": 21,
+    "new_tag": "cs.LG",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "os",
+    "count": 19,
+    "new_tag": "cs.OS",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "hci",
+    "count": 18,
+    "new_tag": "cs.HC",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "llms",
+    "count": 18,
+    "new_tag": "cs.CL",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "networks",
+    "count": 16,
+    "new_tag": "cs.SI",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "literature",
+    "count": 15,
+    "new_tag": "cs.GL",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "crypto",
+    "count": 14,
+    "new_tag": "cs.CR",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "geometry",
+    "count": 13,
+    "new_tag": "cs.CG",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "robotics",
+    "count": 13,
+    "new_tag": "cs.RO",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "complexity",
+    "count": 10,
+    "new_tag": "cs.CC",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "control",
+    "count": 10,
+    "new_tag": "cs.SY",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "vision",
+    "count": 10,
+    "new_tag": "cs.CV",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "digital",
+    "count": 8,
+    "new_tag": "cs.DL",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "sound",
+    "count": 8,
+    "new_tag": "cs.SD",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "distributed-systems",
+    "count": 7,
+    "new_tag": "cs.DC",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "informationtheory",
+    "count": 7,
+    "new_tag": "cs.IT",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "parallel",
+    "count": 7,
+    "new_tag": "cs.DC",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "database",
+    "count": 5,
+    "new_tag": "cs.DB",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "multimedia",
+    "count": 4,
+    "new_tag": "cs.MM",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "operatingsystems",
+    "count": 4,
+    "new_tag": "cs.OS",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "cluster",
+    "count": 3,
+    "new_tag": "cs.DC",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "information-theory",
+    "count": 3,
+    "new_tag": "cs.IT",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "interaction",
+    "count": 3,
+    "new_tag": "cs.HC",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "general",
+    "count": 2,
+    "new_tag": "cs.GL",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "machine",
+    "count": 2,
+    "new_tag": "cs.LG",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "MachineLearning",
+    "count": 2,
+    "new_tag": "cs.LG",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "symbolic",
+    "count": 2,
+    "new_tag": "cs.SC",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "technologies",
+    "count": 2,
+    "new_tag": "cs.ET",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "+information_theory",
+    "count": 1,
+    "new_tag": "cs.IT",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "+machine_learning",
+    "count": 1,
+    "new_tag": "cs.LG",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "+software_engineering",
+    "count": 1,
+    "new_tag": "cs.SE",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "artificialintelligence",
+    "count": 1,
+    "new_tag": "cs.AI",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "automata",
+    "count": 1,
+    "new_tag": "cs.FL",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "computation",
+    "count": 1,
+    "new_tag": "cs.CL",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "computation-and-language",
+    "count": 1,
+    "new_tag": "cs.CL",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "emerging",
+    "count": 1,
+    "new_tag": "cs.ET",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "game-theory",
+    "count": 1,
+    "new_tag": "cs.GT",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "information-retrieval",
+    "count": 1,
+    "new_tag": "cs.IR",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "mathematical",
+    "count": 1,
+    "new_tag": "cs.MS",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "neural",
+    "count": 1,
+    "new_tag": "cs.NE",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "operating-systems",
+    "count": 1,
+    "new_tag": "cs.OS",
+    "reason": "manual alias"
+  },
+  {
+    "old_tag": "programming-languages",
+    "count": 1,
+    "new_tag": "cs.PL",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "programminglanguages",
+    "count": 1,
+    "new_tag": "cs.PL",
+    "reason": "direct name match"
+  },
+  {
+    "old_tag": "retrieval",
+    "count": 1,
+    "new_tag": "cs.IR",
+    "reason": "significant token match"
+  },
+  {
+    "old_tag": "software_engineering",
+    "count": 1,
+    "new_tag": "cs.SE",
+    "reason": "direct name match"
+  }
+]

@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# pinget - A surgical wrapper for pinboard bookmarks
+# Usage: ./pinget <tag> [count]
+
+TAG=$1
+COUNT=${2:-50}
+
+if [ -z "$TAG" ]; then
+    echo "Usage: pinget <tag> [count]"
+    exit 1
+fi
+
+# We use 'bookmarks' because 'get' is restricted to single dates or URLs in the API
+# We strip 'meta', 'hash', 'shared', 'toread' to keep the context lean.
+pinboard bookmarks --tags "$TAG" --count "$COUNT" | jq -c '.[] | {href, description, extended, time, tags}'

@@ -1,0 +1,1 @@
+/home/ian/.agents/AGENTS.md
