@@ -270,6 +270,10 @@ class SyncOrchestrator {
 
       console.log(`[Sync] Server update: ${serverUpdate}, Local last: ${localLastUpdate}`);
 
+      // Mandatory Throttle after /posts/update
+      await this.wait(5000);
+
+      let forceSentinel = false;
       if (serverUpdate !== localLastUpdate) {
         console.log('[Sync] Server has mutations. Entering Precision Strike mode...');
 
@@ -286,22 +290,36 @@ class SyncOrchestrator {
               await db.upsertBatch(additions);
             }
           }
+          // Throttle after Path A
+          await this.wait(5000);
         } else {
           // No previous sync time? Fallback to big pull
           await db.fetchAllFromServer(this.proxyUrl, this.authToken, (p) => console.log(p.status));
+          await this.wait(5000);
         }
+        forceSentinel = true;
+      }
 
-        // Path B: The Dates Hack (Deletions)
-        await this.runDatesSentinel();
+      // Path B: The Dates Hack (Deletions)
+      // We run this if the timestamp changed OR if we haven't successfully run it yet this session
+      let sentinelSuccess = true;
+      if (forceSentinel || !hasRunSentinelThisSession) {
+        sentinelSuccess = await this.runDatesSentinel();
+        if (sentinelSuccess) {
+          hasRunSentinelThisSession = true;
+          console.log('[Sync] Sentinel session ritual complete.');
+        }
+      } else {
+        console.log('[Sync] Server and local are in sync. (Dates Sentinel skipped)');
+      }
 
-        // 3. Update sync state
+      // 3. Update sync state ONLY if everything succeeded
+      if (sentinelSuccess) {
         await db.setMetadata('last_server_update_time', serverUpdate);
         await db.setMetadata('last_full_sync_time', new Date().toISOString());
-
-        if ((window as any).refreshApp) await (window as any).refreshApp();
-        console.log('[Sync] Precision Sync Complete.');
+        console.log('[Sync] Handshake successfully recorded.');
       } else {
-        console.log('[Sync] Server and local are in sync.');
+        console.warn('[Sync] Sync state NOT updated due to sentinel failure.');
       }
 
     } catch (err) {
@@ -323,52 +341,148 @@ class SyncOrchestrator {
     }
   }
 
-  private async runDatesSentinel() {
-    console.log('[Sync] Running Dates Sentinel...');
+  async renameTag(oldTag: string, newTag: string) {
+    console.log(`[Sync] Starting Tag Rename Workaround: ${oldTag} -> ${newTag}`);
+    this.setBusy(true);
 
-    // 1. Get Local Counts
-    const localCountsArray = await db.getDateCounts();
-    const localCounts: Record<string, number> = {};
-    localCountsArray.forEach((row: any) => localCounts[row.date_str] = row.qty);
+    try {
+      // 1. Get all local bookmarks with the old tag
+      const all = await db.getAll();
+      const targets = all.filter((b: any) => (b.tags || '').split(' ').includes(oldTag));
+      console.log(`[Sync] Found ${targets.length} bookmarks with tag '${oldTag}'`);
 
-    // 2. Fetch Server Counts
-    const resp = await fetch(`${this.proxyUrl}/posts/dates?auth_token=${this.authToken}&format=json`);
-    if (!resp.ok) throw new Error(`Dates Sentinel fetch failed: ${resp.status}`);
-    const serverData = await resp.json();
-    const serverCounts: Record<string, number> = {};
-    Object.entries(serverData.dates).forEach(([date, count]) => {
-      serverCounts[date] = parseInt(count as string, 10);
-    });
-
-    // 3. Compare and Pinpoint Mismatches
-    const allDates = new Set([...Object.keys(localCounts), ...Object.keys(serverCounts)]);
-    const mismatches: string[] = [];
-
-    for (const date of allDates) {
-      if (localCounts[date] !== serverCounts[date]) {
-        mismatches.push(date);
+      for (const b of targets) {
+        const tags = new Set((b.tags || '').split(' ').filter(t => t !== oldTag));
+        tags.add(newTag);
+        b.tags = Array.from(tags).join(' ');
+        
+        console.log(`[Sync] Updating ${b.href}...`);
+        // We write locally first
+        await db.localUpsert(b);
       }
+
+      // 2. Trigger a push to flush these changes
+      await this.pushPending();
+
+      // 3. Delete the old tag globally from Pinboard
+      console.log(`[Sync] Deleting old tag '${oldTag}' from server...`);
+      const params = new URLSearchParams({
+        auth_token: this.authToken!,
+        tag: oldTag,
+        format: 'json'
+      });
+      const resp = await fetch(`${this.proxyUrl}/tags/delete?${params.toString()}`, { cache: 'no-store' });
+      const res = await resp.json();
+      console.log('[Sync] Server response:', res.result_code);
+
+      console.log('[Sync] Tag Rename Complete.');
+      if ((window as any).refreshApp) await (window as any).refreshApp();
+
+    } catch (err) {
+      console.error('[Sync] Tag Rename Failed:', err);
+    } finally {
+      this.setBusy(false);
     }
+  }
 
-    if (mismatches.length > 0) {
-      console.log(`[Sync] Found ${mismatches.length} mismatched dates. Reconciling targeted buckets...`);
+  private async wait(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
-      for (const date of mismatches) {
-        console.log(`[Sync] Reconciling ${date}...`);
-        const getUrl = `${this.proxyUrl}/posts/get?auth_token=${this.authToken}&dt=${date}&format=json`;
-        const getResp = await fetch(getUrl);
-        if (getResp.ok) {
-          const authoritativeBookmarks = await getResp.json();
-          // reconcileDate handles deleting what's missing locally
-          await db.reconcileDate(date, authoritativeBookmarks);
-          // upsertBatch handles updating edits/additions for that specific day
-          await db.upsertBatch(authoritativeBookmarks);
-        }
-        // Throttling
-        await new Promise(r => setTimeout(r, 1000));
+  private async runDatesSentinel(): Promise<boolean> {
+    console.log('[Sync] Sentinel: Start');
+
+    try {
+      // 1. Get Local Counts
+      console.log('[Sync] Sentinel: Requesting Local Counts');
+      const localCountsArray = await db.getDateCounts();
+      console.log(`[Sync] Sentinel: Received ${localCountsArray.length} local date buckets`);
+
+      const localCounts: Record<string, number> = {};
+      let localTotal = 0;
+      localCountsArray.forEach((row: any) => {
+        localCounts[row.date_str] = row.qty;
+        localTotal += row.qty;
+      });
+
+      // 2. Fetch Server Counts
+      console.log('[Sync] Sentinel: Fetching Server Dates from Proxy');
+      // Remove cache-buster, legacy APIs can be sensitive to unknown params
+      let resp = await fetch(`${this.proxyUrl}/posts/dates?auth_token=${this.authToken}&format=json`, { cache: 'no-store' });
+      let text = resp.ok ? await resp.text() : '';
+
+      // Retry once if empty (could be quiet throttling) - wait 5s now
+      if (resp.ok && (!text || text.trim() === '')) {
+        console.warn('[Sync] Sentinel: Received 0 bytes. Waiting 5s and retrying...');
+        await this.wait(5000);
+        resp = await fetch(`${this.proxyUrl}/posts/dates?auth_token=${this.authToken}&format=json`, { cache: 'no-store' });
+        text = resp.ok ? await resp.text() : '';
       }
-    } else {
-      console.log('[Sync] Dates Sentinel: No mismatches found.');
+
+
+      if (!resp.ok) throw new Error(`Dates Sentinel fetch failed: ${resp.status}`);
+      console.log(`[Sync] Sentinel: Received ${text.length} bytes from server`);
+
+      if (!text || text.trim() === '') {
+        console.warn('[Sync] Sentinel: Abort - Server returned empty body.');
+        return false;
+      }
+
+      let serverData;
+      try {
+        serverData = JSON.parse(text);
+      } catch (parseErr) {
+        console.error('[Sync] Sentinel: JSON Parse Failed. Raw text:', text.substring(0, 500));
+        throw parseErr;
+      }
+
+      console.log('[Sync] Sentinel: Successfully parsed Server Dates');
+      const serverCounts: Record<string, number> = {};
+      let serverTotal = 0;
+      Object.entries(serverData.dates).forEach(([date, count]) => {
+        const c = parseInt(count as string, 10);
+        serverCounts[date] = c;
+        serverTotal += c;
+      });
+
+      console.log(`[Sync] Sentinel Totals: Local ${localTotal} vs Server ${serverTotal}`);
+
+      // 3. Compare and Pinpoint Mismatches
+      console.log('[Sync] Sentinel: Comparing buckets...');
+      const allDates = new Set([...Object.keys(localCounts), ...Object.keys(serverCounts)]);
+      const mismatches: string[] = [];
+
+      for (const date of allDates) {
+        if (localCounts[date] !== serverCounts[date]) {
+          console.log(`[Sync] Date Mismatch at ${date}: Local ${localCounts[date] || 0} vs Server ${serverCounts[date] || 0}`);
+          mismatches.push(date);
+        }
+      }
+
+      if (mismatches.length > 0) {
+        console.log(`[Sync] Sentinel: Reconciling ${mismatches.length} mismatched dates...`);
+        for (const date of mismatches) {
+          console.log(`[Sync] Sentinel: Reconciling bucket ${date}`);
+          // Throttle between date buckets
+          await this.wait(5000);
+          const getUrl = `${this.proxyUrl}/posts/get?auth_token=${this.authToken}&dt=${date}&format=json`;
+          const getResp = await fetch(getUrl, { cache: 'no-store' });
+          if (getResp.ok) {
+            const data = await getResp.json();
+            const authoritativeBookmarks = data.posts || [];
+            console.log(`[Sync] Sentinel: Reconciling ${authoritativeBookmarks.length} records for ${date}`);
+            await db.reconcileDate(date, authoritativeBookmarks);
+            await db.upsertBatch(authoritativeBookmarks);
+          }
+        }
+        return true;
+      } else {
+        console.log('[Sync] Sentinel: Perfect parity achieved.');
+        return true;
+      }
+    } catch (e) {
+      console.error('[Sync] Sentinel: CRITICAL FAILURE:', e);
+      return false;
     }
   }
 
@@ -389,7 +503,7 @@ class SyncOrchestrator {
             url: b.href,
             format: 'json'
           });
-          const resp = await fetch(`${this.proxyUrl}/posts/delete?${params.toString()}`);
+          const resp = await fetch(`${this.proxyUrl}/posts/delete?${params.toString()}`, { cache: 'no-store' });
           if (!resp.ok) throw new Error(`Delete failed with status ${resp.status}`);
           const res = await resp.json();
           if (res.result_code === 'done' || res.result_code === 'item not found') {
@@ -409,7 +523,7 @@ class SyncOrchestrator {
             format: 'json'
           });
 
-          const resp = await fetch(`${this.proxyUrl}/posts/add?${params.toString()}`);
+          const resp = await fetch(`${this.proxyUrl}/posts/add?${params.toString()}`, { cache: 'no-store' });
           if (!resp.ok) {
             if (resp.status === 429) {
               console.warn('[Sync] Rate limited. Stopping push.');
@@ -428,8 +542,8 @@ class SyncOrchestrator {
           }
         }
 
-        // Respect 3-second delay between write-intensive requests
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Respect 5-second delay between write-intensive requests
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
       } catch (err) {
         console.error(`[Sync] Failed to push ${b.href}:`, err);
@@ -440,10 +554,43 @@ class SyncOrchestrator {
   }
 
   private async fetchServerUpdateTime(): Promise<string> {
-    const resp = await fetch(`${this.proxyUrl}/posts/update?auth_token=${this.authToken}&format=json`);
+    const resp = await fetch(`${this.proxyUrl}/posts/update?auth_token=${this.authToken}&format=json`, { cache: 'no-store' });
     if (!resp.ok) throw new Error(`Failed to fetch server update time: ${resp.status}`);
     const data = await resp.json();
     return data.update_time;
+  }
+}
+
+class HeuristicTagger {
+  private aliases: Record<string, string> = {};
+
+  async init() {
+    const rows = await db.send('GET_TAG_ALIASES');
+    rows.forEach((row: any) => {
+      this.aliases[row.keyword.toLowerCase()] = row.mapped_tag;
+    });
+  }
+
+  suggestTags(url: string, title: string): string {
+    const tags = new Set<string>();
+    
+    // 1. Domain-based tagging
+    try {
+      const domain = new URL(url).hostname.replace('www.', '');
+      if (domain.includes('github.com')) tags.add('code');
+      if (domain.includes('arxiv.org')) tags.add('paper academic');
+      if (domain.includes('youtube.com')) tags.add('video');
+    } catch (e) {}
+
+    // 2. Keyword-based mapping
+    const tokens = `${title} ${url}`.toLowerCase().split(/[^a-z0-9]+/);
+    tokens.forEach(token => {
+      if (this.aliases[token]) {
+        this.aliases[token].split(' ').forEach(t => tags.add(t));
+      }
+    });
+
+    return Array.from(tags).join(' ');
   }
 }
 
@@ -452,8 +599,23 @@ const db = new DatabaseBridge();
 (window as any).db = db;
 const vList = new VirtualizedList('viewport', 'canvas', 'bookmark-list');
 const sync = new SyncOrchestrator('sync-indicator');
+(window as any).sync = sync;
+const tagger = new HeuristicTagger();
+
+let hasRunSentinelThisSession = false;
 
 const initApp = async () => {
+  // Register Service Worker for Offline Fortress Support
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        console.log('[SW] Service Worker Registered', reg.scope);
+      }).catch(err => {
+        console.error('[SW] Registration Failed', err);
+      });
+    });
+  }
+
   const statusEl = document.getElementById('status')!;
   const searchContainer = document.getElementById('search-container')!;
   const loginContainer = document.getElementById('login-container')!;
@@ -475,6 +637,7 @@ const initApp = async () => {
   console.log('Initializing Pinboard PWA...');
   try {
     await db.init();
+    await tagger.init();
     console.log('Database Ready.');
 
     // Load persisted token
@@ -525,6 +688,16 @@ const initApp = async () => {
     const addButton = document.getElementById('add-button') as HTMLButtonElement;
     const resetButton = document.getElementById('reset-button') as HTMLButtonElement;
     const newUrlInput = document.getElementById('new-url') as HTMLInputElement;
+    const newTitleInput = document.getElementById('new-title') as HTMLInputElement;
+    const newTagsInput = document.getElementById('new-tags') as HTMLInputElement;
+
+    const updateSuggestions = () => {
+      const suggested = tagger.suggestTags(newUrlInput.value, newTitleInput.value);
+      if (suggested) newTagsInput.value = suggested;
+    };
+
+    newUrlInput.onblur = updateSuggestions;
+    newTitleInput.oninput = updateSuggestions;
 
     resetButton.onclick = async () => {
       if (confirm('DEEP RESET: Wipe database and credentials?')) {
@@ -532,17 +705,17 @@ const initApp = async () => {
         location.reload();
       }
     };
-    const newTitleInput = document.getElementById('new-title') as HTMLInputElement;
 
     addButton.onclick = async () => {
       const url = newUrlInput.value.trim();
       const title = newTitleInput.value.trim();
+      const tags = newTagsInput.value.trim();
       if (!url || !title) return;
 
       const bookmark = {
         href: url,
         description: title,
-        tags: '',
+        tags: tags,
         extended: '',
         time: new Date().toISOString()
       };
@@ -600,7 +773,7 @@ const initApp = async () => {
 
         // Save token and start background sync
         await db.setMetadata('auth_token', token);
-        const serverUpdate = await fetch(`${proxyUrl}/posts/update?auth_token=${token}&format=json`)
+        const serverUpdate = await fetch(`${proxyUrl}/posts/update?auth_token=${token}&format=json`, { cache: 'no-store' })
           .then(r => r.json())
           .then(d => d.update_time);
         await db.setMetadata('last_server_update_time', serverUpdate);

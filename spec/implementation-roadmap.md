@@ -58,8 +58,8 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that han
 
 ## Phase 6: PWA Hardening
 **Goal:** Offline application availability and final 30Y durability check.
-- [ ] Setup Service Worker for asset caching (offline app loading).
-- [ ] Implement **Heuristic Tagging**:
+- [x] Setup Service Worker for asset caching (offline app loading).
+- [x] Implement **Heuristic Tagging**:
     - Local keyword -> Tag mapping via `tag_aliases`.
     - Domain-based tagging logic.
-- [ ] Asset Audit: Ensure 0 external dependencies (Vendor all scripts like `sqlite-wasm` locally).
+- [x] Asset Audit: Ensure 0 external dependencies (Vendor all scripts like `sqlite-wasm` locally).

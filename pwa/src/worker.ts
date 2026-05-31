@@ -63,10 +63,22 @@ END;
 const initDb = async () => {
   try {
     const sqlite3 = await sqlite3InitModule({
-      print: console.log,
+      print: console.debug,
       printErr: console.error,
       locateFile: (file) => `/vendor/${file}`,
     });
+
+    // --- FIX 1: Enforce the print configuration directly onto the runtime context ---
+    const handleSqlTrace = (...args) => console.debug(...args);
+
+    sqlite3.config.print = handleSqlTrace;
+    sqlite3.config.printErr = console.error;
+
+    // Also override the underlying internal module printer channels
+    if (sqlite3.capi) {
+      sqlite3.capi.print = handleSqlTrace;
+    }
+    // -------------------------------------------------------------------------------
 
     console.log('Running SQLite3 version', sqlite3.version.libVersion);
 
@@ -78,16 +90,23 @@ const initDb = async () => {
       console.warn('OPFS not available, falling back to transient storage.');
     }
 
+    // --- FIX 2: Manually clear the native engine C-level tracing hooks if active ---
+    if (sqlite3.capi && typeof sqlite3.capi.sqlite3_trace_v2 === 'function') {
+      // 0 disables the trace flag masks completely at the C-layer
+      sqlite3.capi.sqlite3_trace_v2(db.pointer, 0, 0, 0);
+    }
+    // -------------------------------------------------------------------------------
+
     // Run Schema
     db.exec(SCHEMA);
-    
+
     // Performance Optimizations for OPFS
     db.exec(`
       PRAGMA journal_mode=WAL;
       PRAGMA synchronous=NORMAL;
       PRAGMA cache_size=-64000; -- 64MB cache
     `);
-    
+
     console.log('Database schema initialized and optimized.');
 
     return true;
@@ -141,7 +160,7 @@ self.onmessage = async (e) => {
             INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
             VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?)
           `);
-          
+
           const updateStmt = db.prepare(`
             UPDATE bookmarks SET
               description=?, extended=?, tags=?, time=?, local_last_modified=?
@@ -196,9 +215,9 @@ self.onmessage = async (e) => {
             bind: [payload.href],
             returnValue: 'resultRows'
           });
-          
+
           const status = existing.length > 0 ? 'PENDING_UPDATE' : 'PENDING_INSERT';
-          
+
           db.exec({
             sql: `
               INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
@@ -212,10 +231,10 @@ self.onmessage = async (e) => {
                 local_last_modified=excluded.local_last_modified
             `,
             bind: [
-              payload.href, 
-              payload.description, 
-              payload.extended, 
-              payload.tags, 
+              payload.href,
+              payload.description,
+              payload.extended,
+              payload.tags,
               payload.time || new Date().toISOString(),
               status,
               now
@@ -279,29 +298,26 @@ self.onmessage = async (e) => {
         db.transaction((db: any) => {
           const { date, bookmarks } = payload;
           const serverHrefs = new Set(bookmarks.map((b: any) => b.href));
-          
+
           // 1. Get local records for this date
           const localRecords = db.exec({
             sql: "SELECT href FROM bookmarks WHERE strftime('%Y-%m-%d', time) = ?",
             bind: [date],
-            returnValue: 'resultRows'
+            returnValue: 'resultRows',
+            rowMode: 'object'
           });
 
           // 2. Delete local records not in server list
           const deleteStmt = db.prepare('DELETE FROM bookmarks WHERE href = ?');
-          for (const localHref of localRecords) {
-            if (!serverHrefs.has(localHref)) {
-              console.log(`[Worker] Dates Hack: Pruning deleted bookmark ${localHref}`);
-              deleteStmt.bind([localHref]);
+          for (const row of localRecords) {
+            if (!serverHrefs.has(row.href)) {
+              console.log(`[Worker] Dates Hack: Pruning deleted bookmark ${row.href}`);
+              deleteStmt.bind([row.href]);
               deleteStmt.step();
               deleteStmt.reset();
             }
           }
           deleteStmt.finalize();
-
-          // 3. Upsert server records (covers edits/additions on that date)
-          // We can reuse UPSERT_BATCH logic here or just call it after.
-          // For simplicity, let's just do the deletes here.
         });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
@@ -321,10 +337,11 @@ self.onmessage = async (e) => {
           const existing = db.exec({
             sql: 'SELECT sync_status FROM bookmarks WHERE href = ?',
             bind: [payload],
-            returnValue: 'resultRows'
+            returnValue: 'resultRows',
+            rowMode: 'object'
           });
           
-          if (existing.length > 0 && existing[0] === 'PENDING_DELETE') {
+          if (existing.length > 0 && existing[0].sync_status === 'PENDING_DELETE') {
             db.exec({
               sql: 'DELETE FROM bookmarks WHERE href = ?',
               bind: [payload]
@@ -339,6 +356,22 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
 
+      case 'GET_TAG_ALIASES':
+        const aliases = db.exec({
+          sql: 'SELECT * FROM tag_aliases',
+          returnValue: 'resultRows',
+          rowMode: 'object'
+        });
+        self.postMessage({ type: 'QUERY_RESULTS', payload: aliases, id });
+        break;
+
+      case 'UPSERT_TAG_ALIAS':
+        db.exec({
+          sql: 'INSERT INTO tag_aliases (keyword, mapped_tag) VALUES (?, ?) ON CONFLICT(keyword) DO UPDATE SET mapped_tag=excluded.mapped_tag',
+          bind: [payload.keyword, payload.mapped_tag]
+        });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
       case 'DEBUG_CLEAR_DB':
         db.transaction((db: any) => {
           // Drop tables to bypass slow triggers
@@ -361,10 +394,10 @@ self.onmessage = async (e) => {
         console.warn('Unknown message type:', type);
     }
   } catch (error) {
-    self.postMessage({ 
-      type: 'ERROR', 
-      payload: (error as Error).message, 
-      id 
+    self.postMessage({
+      type: 'ERROR',
+      payload: (error as Error).message,
+      id
     });
   }
 };
@@ -372,10 +405,10 @@ self.onmessage = async (e) => {
 const fetchAllFromServer = async (proxyUrl: string, authToken: string, id: string) => {
   try {
     self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Fetching from Pinboard...' }, id });
-    
+
     const url = `${proxyUrl}/posts/all?auth_token=${authToken}&format=json`;
     const response = await fetch(url);
-    
+
     if (!response.ok) {
       throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
     }
@@ -389,7 +422,7 @@ const fetchAllFromServer = async (proxyUrl: string, authToken: string, id: strin
     const CHUNK_SIZE = 500;
     for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
       const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
-      
+
       db.transaction((db: any) => {
         const stmt = db.prepare(`
           INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
@@ -409,13 +442,13 @@ const fetchAllFromServer = async (proxyUrl: string, authToken: string, id: strin
         stmt.finalize();
       });
 
-      self.postMessage({ 
-        type: 'SYNC_PROGRESS', 
-        payload: { 
+      self.postMessage({
+        type: 'SYNC_PROGRESS',
+        payload: {
           status: `Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`,
           progress: (i + CHUNK_SIZE) / bookmarks.length
-        }, 
-        id 
+        },
+        id
       });
     }
 

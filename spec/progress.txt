@@ -45,8 +45,10 @@
 - [x] Implement **Targeted Reconciliation**: Fetch specific mismatched dates via `/posts/get?dt=...` to prune deleted local records.
 - [x] Initialize `last_full_sync_time` for the next delta cycle.
 
-## Next Step
-- **Phase 6: PWA Hardening**
-    - Setup Service Worker for offline asset caching.
-    - Implement Heuristic Tagging engine.
-    - Final 30Y durability check (0 external dependencies).
+## Phase 6: PWA Hardening - COMPLETED
+- [x] Implement **Service Worker** for offline asset caching (fortress is immortal).
+- [x] Implement **Heuristic Tagging Engine** with domain and keyword rules.
+- [x] Implement **Tag Rename Workaround** (`sync.renameTag(old, new)`) to bypass legacy API bugs.
+- [x] Final 30Y durability check: 0 external dependencies (vendored SQLite).
+
+# ALL PHASES COMPLETED. THE FORTRESS IS SEALED.
