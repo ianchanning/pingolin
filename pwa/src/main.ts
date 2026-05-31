@@ -580,12 +580,21 @@ const sync = new SyncOrchestrator('sync-indicator');
 
 let hasRunSentinelThisSession = false;
 
-const populateTagSuggestions = async () => {
-  const tags = await db.getPopularTags();
-  const datalist = document.getElementById('tag-suggestions')!;
-  if (datalist) {
-    datalist.innerHTML = tags.map(t => `<option value="${t}">`).join('');
+let popularTagsCache: string[] = [];
+
+const populateTagSuggestions = async (inputVal: string = '') => {
+  if (popularTagsCache.length === 0) {
+    popularTagsCache = await db.getPopularTags();
   }
+  
+  const datalist = document.getElementById('tag-suggestions')!;
+  if (!datalist) return;
+
+  // Extract prefix (everything before the last space)
+  const lastSpaceIndex = inputVal.lastIndexOf(' ');
+  const prefix = lastSpaceIndex === -1 ? '' : inputVal.substring(0, lastSpaceIndex + 1);
+
+  datalist.innerHTML = popularTagsCache.map(t => `<option value="${prefix}${t}">`).join('');
 };
 
 const initApp = async () => {
@@ -691,6 +700,10 @@ const initApp = async () => {
     const newTitleInput = document.getElementById('new-title') as HTMLInputElement;
     const newTagsInput = document.getElementById('new-tags') as HTMLInputElement;
 
+    newTagsInput.oninput = () => {
+      populateTagSuggestions(newTagsInput.value);
+    };
+
     resetButton.onclick = async () => {
       if (confirm('DEEP RESET: Wipe database and credentials?')) {
         await db.debugClearDb();
@@ -718,6 +731,7 @@ const initApp = async () => {
 
       // 2. Refresh UI immediately
       await refreshData();
+      popularTagsCache = []; 
       await populateTagSuggestions();
 
       // 3. Trigger background sync immediately
@@ -777,6 +791,7 @@ const initApp = async () => {
         sync.startLoop();
 
         await refreshData();
+        popularTagsCache = []; 
         await populateTagSuggestions();
       } catch (err) {
         console.error('Sync Error:', err);
