@@ -10,15 +10,25 @@
     <div id="app">
         <header>
             <h1>Pinboard PWA</h1>
-            <div id="status">Initializing...</div>
+            <div id="indicators">
+                <span id="offline-indicator" class="indicator">OFFLINE</span>
+                <span id="sync-indicator" class="indicator">SYNCING...</span>
+                <div id="status">Initializing...</div>
+            </div>
         </header>
         <main>
-            <div id="search-container">
-                <input type="text" id="search" placeholder="Search 22,000+ bookmarks..." disabled>
+            <div id="login-container" style="display: none;">
+                <input type="password" id="auth-token" placeholder="username:TOKEN">
+                <button id="sync-button">Initial Sync</button>
             </div>
-            <ul id="bookmark-list">
-                <!-- Bookmarks will appear here -->
-            </ul>
+            <div id="search-container" style="display: none;">
+                <input type="text" id="search" placeholder="Search 22,000+ bookmarks...">
+                <div id="viewport">
+                    <div id="canvas">
+                        <ul id="bookmark-list"></ul>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
     <script type="module" src="./src/main.ts"></script>

@@ -73,7 +73,15 @@ const initDb = async () => {
 
     // Run Schema
     db.exec(SCHEMA);
-    console.log('Database schema initialized.');
+    
+    // Performance Optimizations for OPFS
+    db.exec(`
+      PRAGMA journal_mode=WAL;
+      PRAGMA synchronous=NORMAL;
+      PRAGMA cache_size=-64000; -- 64MB cache
+    `);
+    
+    console.log('Database schema initialized and optimized.');
 
     return true;
   } catch (err) {
@@ -85,6 +93,7 @@ const initDb = async () => {
 // Message Handler
 self.onmessage = async (e) => {
   const { type, payload, id } = e.data;
+  console.log(`[Worker] Received: ${type} (${id})`);
 
   try {
     switch (type) {
@@ -101,7 +110,6 @@ self.onmessage = async (e) => {
             JOIN bookmarks b ON f.rowid = b.rowid
             WHERE bookmarks_fts MATCH ?
             ORDER BY b.time DESC
-            LIMIT 100
           `,
           bind: [payload],
           returnValue: 'resultRows',
@@ -112,7 +120,7 @@ self.onmessage = async (e) => {
 
       case 'QUERY_ALL':
         const all = db.exec({
-          sql: 'SELECT * FROM bookmarks ORDER BY time DESC LIMIT 100',
+          sql: 'SELECT * FROM bookmarks ORDER BY time DESC',
           returnValue: 'resultRows',
           rowMode: 'object'
         });
@@ -142,6 +150,23 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'UPSERT_SUCCESS', id });
         break;
 
+      case 'DEBUG_CLEAR_DB':
+        db.transaction((db: any) => {
+          // Drop tables to bypass slow triggers
+          db.exec('DROP TABLE IF EXISTS bookmarks');
+          db.exec('DROP TABLE IF EXISTS bookmarks_fts');
+          db.exec('DROP TABLE IF EXISTS tag_aliases');
+          // Recreate everything
+          db.exec(SCHEMA);
+        });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
+
+      case 'FETCH_ALL_SERVER':
+        // Payload is { proxyUrl, authToken }
+        await fetchAllFromServer(payload.proxyUrl, payload.authToken, id);
+        break;
+
       default:
         console.warn('Unknown message type:', type);
     }
@@ -151,5 +176,62 @@ self.onmessage = async (e) => {
       payload: (error as Error).message, 
       id 
     });
+  }
+};
+
+const fetchAllFromServer = async (proxyUrl: string, authToken: string, id: string) => {
+  try {
+    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Fetching from Pinboard...' }, id });
+    
+    const url = `${proxyUrl}/posts/all?auth_token=${authToken}&format=json`;
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+    }
+
+    // Pinboard /posts/all returns the entire array. 
+    // For 22k records, this is ~10-15MB of JSON.
+    const bookmarks = await response.json();
+    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: `Downloaded ${bookmarks.length} records. Ingesting...` }, id });
+
+    // Chunked insertion to avoid locking the worker for too long and manage memory
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
+      const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
+      
+      db.transaction((db: any) => {
+        const stmt = db.prepare(`
+          INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
+          VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?)
+          ON CONFLICT(href) DO UPDATE SET
+            description=excluded.description,
+            extended=excluded.extended,
+            tags=excluded.tags,
+            time=excluded.time,
+            local_last_modified=excluded.local_last_modified
+        `);
+        for (const b of chunk) {
+          stmt.bind([b.href, b.description, b.extended, b.tags, b.time, Date.now()]);
+          stmt.step();
+          stmt.reset();
+        }
+        stmt.finalize();
+      });
+
+      self.postMessage({ 
+        type: 'SYNC_PROGRESS', 
+        payload: { 
+          status: `Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`,
+          progress: (i + CHUNK_SIZE) / bookmarks.length
+        }, 
+        id 
+      });
+    }
+
+    self.postMessage({ type: 'SYNC_COMPLETE', payload: { count: bookmarks.length }, id });
+
+  } catch (error) {
+    throw error;
   }
 };

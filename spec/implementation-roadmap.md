@@ -22,19 +22,19 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that han
 
 ## Phase 2: Initial Ingestion (The "Big Pull")
 **Goal:** Efficiently move 22,000+ server records into the local database.
-- [ ] Fetch full dataset using `/posts/all` (handled by Worker).
-- [ ] Implement **Chunked Insertion** to prevent main-thread or memory lockups.
-- [ ] Store the `update_time` locally for future delta-syncs.
-- [ ] Verify FTS5 search performance on the full 22,000 records (<50ms target).
+- [x] Fetch full dataset using `/posts/all` (handled by Worker).
+- [x] Implement **Chunked Insertion** to prevent main-thread or memory lockups.
+- [x] Store the `update_time` locally for future delta-syncs.
+- [x] Verify FTS5 search performance on the full 22,000 records (<50ms target).
 
 ## Phase 3: The "Brutal" UI (Search & List)
 **Goal:** A UI that feels like a native app and loads in milliseconds.
-- [ ] Build single-screen searchable list.
-- [ ] Implement virtualized scrolling (only render visible items) to handle 20k rows.
-- [ ] Create the **"Honest Sync Indicator"**:
+- [x] Build single-screen searchable list.
+- [x] Implement virtualized scrolling (only render visible items) to handle 20k rows.
+- [x] Create the **"Honest Sync Indicator"**:
     - Show icon if `sync_status != 'SYNCHRONIZED'`.
     - Show indicator if a background fetch is active.
-- [ ] Implement "Offline" banner using `navigator.onLine`.
+- [x] Implement "Offline" banner using `navigator.onLine`.
 
 ## Phase 4: Local-First Synchronization
 **Goal:** Enable offline writes and robust conflict resolution.
