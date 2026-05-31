@@ -1,4 +1,4 @@
-import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
+import sqlite3InitModule from '../public/vendor/sqlite3-bundler-friendly.mjs';
 
 /**
  * Pinboard PWA - Background Worker
