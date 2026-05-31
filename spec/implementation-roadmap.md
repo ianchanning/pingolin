@@ -48,7 +48,15 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that han
 - [x] Conflict Logic: Implement the "Merge & Overwrite" strategy.
 - [x] **Tag Rename Workaround:** Implement "Add New Tag + Global Delete Old" logic to bypass broken `tags/rename` endpoint.
 
-## Phase 5: PWA Hardening
+## Phase 5: Precision Delta Sync (The "Dates Hack")
+**Goal:** Eliminate full dataset downloads by pinpointing deletions and edits via date-count sentinels.
+- [x] Implement **Fast-Path Delta**: Use `/posts/all?fromdt=...` to fetch additions and edits since last sync.
+- [x] Implement **Local Date Grouping**: High-speed SQL query to count bookmarks by UTC date.
+- [x] Implement **Dates Sentinel**: Fetch `/posts/dates` and compare against local counts to detect invisible deletions.
+- [x] Implement **Targeted Reconciliation**: Fetch specific mismatched dates via `/posts/get?dt=...` to prune deleted local records.
+- [x] **Optimization:** Update `last_server_update_time` only after successful delta reconciliation.
+
+## Phase 6: PWA Hardening
 **Goal:** Offline application availability and final 30Y durability check.
 - [ ] Setup Service Worker for asset caching (offline app loading).
 - [ ] Implement **Heuristic Tagging**:

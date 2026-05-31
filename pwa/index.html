@@ -10,7 +10,7 @@
     <div id="app">
         <header>
             <h1>Pinboard PWA</h1>
-            <div id="add-form">
+            <div id="add-form" style="display: none;">
                 <input type="text" id="new-url" placeholder="https://...">
                 <input type="text" id="new-title" placeholder="Title">
                 <button id="add-button">Add</button>
@@ -25,9 +25,10 @@
             <div id="login-container" style="display: none;">
                 <input type="password" id="auth-token" placeholder="username:TOKEN">
                 <button id="sync-button">Initial Sync</button>
+                <button id="reset-button" style="background: #666; font-size: 0.6rem;">Deep Reset</button>
             </div>
             <div id="search-container" style="display: none;">
-                <input type="text" id="search" placeholder="Search 22,000+ bookmarks...">
+                <input type="text" id="search" placeholder="Search...">
                 <div id="viewport">
                     <div id="canvas">
                         <ul id="bookmark-list"></ul>

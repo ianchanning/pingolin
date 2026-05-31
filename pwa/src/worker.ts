@@ -252,6 +252,60 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'QUERY_RESULTS', payload: pending, id });
         break;
 
+      case 'QUERY_DATE_COUNTS':
+        const counts = db.exec({
+          sql: `
+            SELECT strftime('%Y-%m-%d', time) as date_str, COUNT(*) as qty 
+            FROM bookmarks 
+            GROUP BY date_str
+          `,
+          returnValue: 'resultRows',
+          rowMode: 'object'
+        });
+        self.postMessage({ type: 'QUERY_RESULTS', payload: counts, id });
+        break;
+
+      case 'GET_BOOKMARK_COUNT':
+        const rowCount = db.exec({
+          sql: 'SELECT COUNT(*) as count FROM bookmarks',
+          returnValue: 'resultRows',
+          rowMode: 'object'
+        });
+        self.postMessage({ type: 'QUERY_RESULTS', payload: rowCount[0].count, id });
+        break;
+
+      case 'RECONCILE_DATE':
+        // Payload: { date: 'YYYY-MM-DD', bookmarks: [...] }
+        db.transaction((db: any) => {
+          const { date, bookmarks } = payload;
+          const serverHrefs = new Set(bookmarks.map((b: any) => b.href));
+          
+          // 1. Get local records for this date
+          const localRecords = db.exec({
+            sql: "SELECT href FROM bookmarks WHERE strftime('%Y-%m-%d', time) = ?",
+            bind: [date],
+            returnValue: 'resultRows'
+          });
+
+          // 2. Delete local records not in server list
+          const deleteStmt = db.prepare('DELETE FROM bookmarks WHERE href = ?');
+          for (const localHref of localRecords) {
+            if (!serverHrefs.has(localHref)) {
+              console.log(`[Worker] Dates Hack: Pruning deleted bookmark ${localHref}`);
+              deleteStmt.bind([localHref]);
+              deleteStmt.step();
+              deleteStmt.reset();
+            }
+          }
+          deleteStmt.finalize();
+
+          // 3. Upsert server records (covers edits/additions on that date)
+          // We can reuse UPSERT_BATCH logic here or just call it after.
+          // For simplicity, let's just do the deletes here.
+        });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
+
       case 'LOCAL_DELETE':
         // Payload is href
         db.exec({
@@ -291,6 +345,7 @@ self.onmessage = async (e) => {
           db.exec('DROP TABLE IF EXISTS bookmarks');
           db.exec('DROP TABLE IF EXISTS bookmarks_fts');
           db.exec('DROP TABLE IF EXISTS tag_aliases');
+          db.exec('DROP TABLE IF EXISTS metadata');
           // Recreate everything
           db.exec(SCHEMA);
         });

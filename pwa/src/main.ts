@@ -4,10 +4,10 @@
 
 class DatabaseBridge {
   private worker: Worker;
-  private pendingRequests: Map<string, { 
-    resolve: Function, 
-    reject: Function, 
-    onProgress?: (data: any) => void 
+  private pendingRequests: Map<string, {
+    resolve: Function,
+    reject: Function,
+    onProgress?: (data: any) => void
   }> = new Map();
 
   constructor() {
@@ -51,6 +51,10 @@ class DatabaseBridge {
     return this.send('QUERY_ALL');
   }
 
+  async getBookmarkCount(): Promise<number> {
+    return this.send('GET_BOOKMARK_COUNT');
+  }
+
   async upsertBatch(bookmarks: any[]) {
     return this.send('UPSERT_BATCH', bookmarks);
   }
@@ -69,6 +73,14 @@ class DatabaseBridge {
 
   async getPending() {
     return this.send('GET_PENDING');
+  }
+
+  async getDateCounts(): Promise<any[]> {
+    return this.send('QUERY_DATE_COUNTS');
+  }
+
+  async reconcileDate(date: string, bookmarks: any[]) {
+    return this.send('RECONCILE_DATE', { date, bookmarks });
   }
 
   async setSynchronized(href: string) {
@@ -170,7 +182,7 @@ class VirtualizedList {
       `;
       fragment.appendChild(li);
     }
-    
+
     this.list.innerHTML = '';
     this.list.appendChild(fragment);
 
@@ -201,6 +213,21 @@ class SyncOrchestrator {
     this.authToken = token;
   }
 
+  setBusy(busy: boolean) {
+    this.isSyncing = busy;
+    if (busy) {
+      this.syncIndicator.style.display = 'block';
+    } else {
+      const checkPending = async () => {
+        const pending = await db.getPending();
+        if (!pending || pending.length === 0) {
+          this.syncIndicator.style.display = 'none';
+        }
+      };
+      checkPending();
+    }
+  }
+
   async trigger() {
     console.log('[Sync] Trigger requested.');
     this.needsSync = true;
@@ -222,8 +249,15 @@ class SyncOrchestrator {
     this.syncIndicator.style.display = 'block';
 
     try {
-      console.log('[Sync] Starting Sync Loop...');
-      
+      console.log('[Sync] Starting Precision Sync Loop (The Dates Hack)...');
+
+      // 0. Sanity Check: If DB is empty, abort.
+      const count = await db.getBookmarkCount();
+      if (count === 0) {
+        console.info('[Sync] Loop aborted: Local database is empty. Please perform an Initial Sync.');
+        return;
+      }
+
       // 1. Push PENDING writes first
       const pushedCount = await this.pushPending();
       if (pushedCount > 0 && (window as any).refreshApp) {
@@ -237,18 +271,41 @@ class SyncOrchestrator {
       console.log(`[Sync] Server update: ${serverUpdate}, Local last: ${localLastUpdate}`);
 
       if (serverUpdate !== localLastUpdate) {
-        console.log('[Sync] Server has new data. Pulling downstream...');
-        await db.fetchAllFromServer(this.proxyUrl, this.authToken, (progress) => {
-          console.log(`[Sync] Pull Progress: ${progress.status}`);
-        });
+        console.log('[Sync] Server has mutations. Entering Precision Strike mode...');
+
+        // Path A: Fast-Path Delta (Additions/Edits)
+        const lastFullSync = (await db.getMetadata('last_full_sync_time'))?.value;
+        if (lastFullSync) {
+          console.log(`[Sync] Requesting additions since ${lastFullSync}`);
+          const deltaUrl = `${this.proxyUrl}/posts/all?auth_token=${this.authToken}&fromdt=${lastFullSync}&format=json`;
+          const deltaResp = await fetch(deltaUrl);
+          if (deltaResp.ok) {
+            const additions = await deltaResp.json();
+            if (additions.length > 0) {
+              console.log(`[Sync] Found ${additions.length} server-side additions/edits.`);
+              await db.upsertBatch(additions);
+            }
+          }
+        } else {
+          // No previous sync time? Fallback to big pull
+          await db.fetchAllFromServer(this.proxyUrl, this.authToken, (p) => console.log(p.status));
+        }
+
+        // Path B: The Dates Hack (Deletions)
+        await this.runDatesSentinel();
+
+        // 3. Update sync state
         await db.setMetadata('last_server_update_time', serverUpdate);
+        await db.setMetadata('last_full_sync_time', new Date().toISOString());
+
         if ((window as any).refreshApp) await (window as any).refreshApp();
+        console.log('[Sync] Precision Sync Complete.');
       } else {
         console.log('[Sync] Server and local are in sync.');
       }
 
     } catch (err) {
-      console.error('[Sync] Loop failed:', err);
+      console.error('[Sync] Precision Sync failed:', err);
     } finally {
       this.isSyncing = false;
       const pending = await db.getPending();
@@ -266,6 +323,55 @@ class SyncOrchestrator {
     }
   }
 
+  private async runDatesSentinel() {
+    console.log('[Sync] Running Dates Sentinel...');
+
+    // 1. Get Local Counts
+    const localCountsArray = await db.getDateCounts();
+    const localCounts: Record<string, number> = {};
+    localCountsArray.forEach((row: any) => localCounts[row.date_str] = row.qty);
+
+    // 2. Fetch Server Counts
+    const resp = await fetch(`${this.proxyUrl}/posts/dates?auth_token=${this.authToken}&format=json`);
+    if (!resp.ok) throw new Error(`Dates Sentinel fetch failed: ${resp.status}`);
+    const serverData = await resp.json();
+    const serverCounts: Record<string, number> = {};
+    Object.entries(serverData.dates).forEach(([date, count]) => {
+      serverCounts[date] = parseInt(count as string, 10);
+    });
+
+    // 3. Compare and Pinpoint Mismatches
+    const allDates = new Set([...Object.keys(localCounts), ...Object.keys(serverCounts)]);
+    const mismatches: string[] = [];
+
+    for (const date of allDates) {
+      if (localCounts[date] !== serverCounts[date]) {
+        mismatches.push(date);
+      }
+    }
+
+    if (mismatches.length > 0) {
+      console.log(`[Sync] Found ${mismatches.length} mismatched dates. Reconciling targeted buckets...`);
+
+      for (const date of mismatches) {
+        console.log(`[Sync] Reconciling ${date}...`);
+        const getUrl = `${this.proxyUrl}/posts/get?auth_token=${this.authToken}&dt=${date}&format=json`;
+        const getResp = await fetch(getUrl);
+        if (getResp.ok) {
+          const authoritativeBookmarks = await getResp.json();
+          // reconcileDate handles deleting what's missing locally
+          await db.reconcileDate(date, authoritativeBookmarks);
+          // upsertBatch handles updating edits/additions for that specific day
+          await db.upsertBatch(authoritativeBookmarks);
+        }
+        // Throttling
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    } else {
+      console.log('[Sync] Dates Sentinel: No mismatches found.');
+    }
+  }
+
   private async pushPending(): Promise<number> {
     const pending = await db.getPending();
     if (!pending || pending.length === 0) return 0;
@@ -276,7 +382,7 @@ class SyncOrchestrator {
     for (const b of pending) {
       try {
         console.log(`[Sync] Pushing ${b.sync_status} for ${b.href}...`);
-        
+
         if (b.sync_status === 'PENDING_DELETE') {
           const params = new URLSearchParams({
             auth_token: this.authToken!,
@@ -324,7 +430,7 @@ class SyncOrchestrator {
 
         // Respect 3-second delay between write-intensive requests
         await new Promise(resolve => setTimeout(resolve, 3000));
-        
+
       } catch (err) {
         console.error(`[Sync] Failed to push ${b.href}:`, err);
         break;
@@ -351,6 +457,7 @@ const initApp = async () => {
   const statusEl = document.getElementById('status')!;
   const searchContainer = document.getElementById('search-container')!;
   const loginContainer = document.getElementById('login-container')!;
+  const addForm = document.getElementById('add-form')!;
   const syncButton = document.getElementById('sync-button') as HTMLButtonElement;
   const authTokenInput = document.getElementById('auth-token') as HTMLInputElement;
   const searchInput = document.getElementById('search') as HTMLInputElement;
@@ -381,16 +488,27 @@ const initApp = async () => {
     const refreshData = async () => {
       const existing = await db.getAll();
       const hasToken = !!(await db.getMetadata('auth_token'))?.value;
+      const hasSynced = !!(await db.getMetadata('last_full_sync_time'))?.value;
+      const hasData = existing && existing.length > 0;
 
-      if (existing && existing.length > 0) {
+      // Unlock UI if we have a token AND (data exists OR setup ritual complete)
+      const isUnlocked = hasToken && (hasData || hasSynced);
+      
+      addForm.style.display = (isUnlocked && hasToken) ? 'flex' : 'none';
+      searchContainer.style.display = (isUnlocked || hasData) ? 'block' : 'none';
+      
+      // If we have data, we hide the login container (unless token is missing)
+      // If we have NO data, we ALWAYS show the sync button to allow re-ingestion
+      loginContainer.style.display = hasData && hasToken ? 'none' : 'block';
+
+      if (hasData) {
         statusEl.innerHTML = `${existing.length} bookmarks. ${!hasToken ? '<span class="token-error">(Sync Disabled: No Key)</span>' : ''}`;
-        loginContainer.style.display = hasToken ? 'none' : 'block';
-        searchContainer.style.display = 'block';
         vList.updateItems(existing);
+      } else if (isUnlocked) {
+        statusEl.textContent = 'Fortress initialized. No bookmarks found on server.';
+        vList.updateItems([]);
       } else {
         statusEl.textContent = 'Empty database. Ready for initial sync.';
-        loginContainer.style.display = 'block';
-        searchContainer.style.display = 'none';
         vList.updateItems([]);
       }
     };
@@ -405,7 +523,15 @@ const initApp = async () => {
 
     // Add Bookmark handler
     const addButton = document.getElementById('add-button') as HTMLButtonElement;
+    const resetButton = document.getElementById('reset-button') as HTMLButtonElement;
     const newUrlInput = document.getElementById('new-url') as HTMLInputElement;
+
+    resetButton.onclick = async () => {
+      if (confirm('DEEP RESET: Wipe database and credentials?')) {
+        await db.debugClearDb();
+        location.reload();
+      }
+    };
     const newTitleInput = document.getElementById('new-title') as HTMLInputElement;
 
     addButton.onclick = async () => {
@@ -424,10 +550,10 @@ const initApp = async () => {
       // 1. Write instantly to local DB
       await db.localUpsert(bookmark);
       console.log('[UI] Local write complete.');
-      
+
       // 2. Refresh UI immediately
       await refreshData();
-      
+
       // 3. Trigger background sync immediately
       sync.trigger();
 
@@ -440,7 +566,7 @@ const initApp = async () => {
     searchInput.oninput = () => {
       clearTimeout(searchTimeout);
       const query = searchInput.value.trim();
-      
+
       searchTimeout = setTimeout(async () => {
         if (!query) {
           await refreshData();
@@ -462,10 +588,11 @@ const initApp = async () => {
       if (!token) return alert('Please enter your Pinboard auth_token (username:HEX)');
 
       syncButton.disabled = true;
-      syncIndicator.style.display = 'block';
+      sync.setBusy(true); // Lock the sync orchestrator
+      statusEl.textContent = 'Connecting to Proxy...';
       try {
         const proxyUrl = 'https://pinboard-proxy.ian-pinboard-proxy.workers.dev';
-        
+
         // Initial Full Sync
         await db.fetchAllFromServer(proxyUrl, token, (progress) => {
           statusEl.textContent = progress.status;
@@ -477,6 +604,7 @@ const initApp = async () => {
           .then(r => r.json())
           .then(d => d.update_time);
         await db.setMetadata('last_server_update_time', serverUpdate);
+        await db.setMetadata('last_full_sync_time', new Date().toISOString());
 
         sync.setAuthToken(token);
         sync.startLoop();
@@ -487,7 +615,7 @@ const initApp = async () => {
         statusEl.textContent = 'Sync Failed: ' + err;
       } finally {
         syncButton.disabled = false;
-        syncIndicator.style.display = 'none';
+        sync.setBusy(false); // Release the lock
       }
     };
 

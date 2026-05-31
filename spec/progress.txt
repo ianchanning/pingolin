@@ -38,8 +38,15 @@
 - [x] Add **Token Persistence** via the database metadata table.
 - [x] Integrated **Honest Sync Indicator** with pending record status.
 
+## Phase 5: Precision Delta Sync (The "Dates Hack") - COMPLETED
+- [x] Implement **Fast-Path Delta**: Uses `/posts/all?fromdt=...` to fetch additions and edits since last sync.
+- [x] Implement **Local Date Grouping**: High-speed SQL query to count bookmarks by UTC date.
+- [x] Implement **Dates Sentinel**: Fetch `/posts/dates` and compare against local counts to detect invisible deletions.
+- [x] Implement **Targeted Reconciliation**: Fetch specific mismatched dates via `/posts/get?dt=...` to prune deleted local records.
+- [x] Initialize `last_full_sync_time` for the next delta cycle.
+
 ## Next Step
-- **Phase 5: PWA Hardening**
+- **Phase 6: PWA Hardening**
     - Setup Service Worker for offline asset caching.
     - Implement Heuristic Tagging engine.
     - Final 30Y durability check (0 external dependencies).
