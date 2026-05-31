@@ -51,6 +51,7 @@ button {
 }
 label,
 button {
+  cursor: pointer;
 }
 label {
   display: block;
@@ -160,6 +161,8 @@ label input {
 #login-container {
   margin-top: 2rem;
   padding-top: 1rem;
+  gap: 0.5rem;
+  justify-content: flex-end;
 }
 
 #search-form {

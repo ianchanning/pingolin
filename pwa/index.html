@@ -13,12 +13,13 @@
 <body>
     <div id="app">
         <header>
-            <h1>Pinboard PWA</h1>
+            <h1>Pinboard PWA <a id="toggle-add-btn" href="#" style="text-decoration: none; color: inherit; display: none; font-size: 0.8em; vertical-align: middle;">+</a></h1>
             <div id="add-form" style="display: none;">
                 <input type="text" id="new-url" placeholder="https://...">
                 <input type="text" id="new-title" placeholder="Title">
-                <input type="text" id="new-tags" placeholder="Tags (auto-suggested)">
-                <button id="add-button">+</button>
+                <input type="text" id="new-tags" placeholder="Tags (space separated)" list="tag-suggestions">
+                <datalist id="tag-suggestions"></datalist>
+                <button id="add-button">Add</button>
             </div>
             <div id="indicators">
                 <span id="offline-indicator" class="indicator">OFFLINE</span>

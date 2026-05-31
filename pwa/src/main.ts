@@ -55,6 +55,10 @@ class DatabaseBridge {
     return this.send('GET_BOOKMARK_COUNT');
   }
 
+  async getPopularTags(): Promise<string[]> {
+    return this.send('GET_POPULAR_TAGS');
+  }
+
   async upsertBatch(bookmarks: any[]) {
     return this.send('UPSERT_BATCH', bookmarks);
   }
@@ -565,38 +569,7 @@ class SyncOrchestrator {
   }
 }
 
-class HeuristicTagger {
-  private aliases: Record<string, string> = {};
 
-  async init() {
-    const rows = await db.send('GET_TAG_ALIASES');
-    rows.forEach((row: any) => {
-      this.aliases[row.keyword.toLowerCase()] = row.mapped_tag;
-    });
-  }
-
-  suggestTags(url: string, title: string): string {
-    const tags = new Set<string>();
-
-    // 1. Domain-based tagging
-    try {
-      const domain = new URL(url).hostname.replace('www.', '');
-      if (domain.includes('github.com')) tags.add('code');
-      if (domain.includes('arxiv.org')) tags.add('paper academic');
-      if (domain.includes('youtube.com')) tags.add('video');
-    } catch (e) { }
-
-    // 2. Keyword-based mapping
-    const tokens = `${title} ${url}`.toLowerCase().split(/[^a-z0-9]+/);
-    tokens.forEach(token => {
-      if (this.aliases[token]) {
-        this.aliases[token].split(' ').forEach(t => tags.add(t));
-      }
-    });
-
-    return Array.from(tags).join(' ');
-  }
-}
 
 // Initialize Application
 const db = new DatabaseBridge();
@@ -604,9 +577,16 @@ const db = new DatabaseBridge();
 const vList = new VirtualizedList('viewport', 'canvas', 'bookmark-list');
 const sync = new SyncOrchestrator('sync-indicator');
 (window as any).sync = sync;
-const tagger = new HeuristicTagger();
 
 let hasRunSentinelThisSession = false;
+
+const populateTagSuggestions = async () => {
+  const tags = await db.getPopularTags();
+  const datalist = document.getElementById('tag-suggestions')!;
+  if (datalist) {
+    datalist.innerHTML = tags.map(t => `<option value="${t}">`).join('');
+  }
+};
 
 const initApp = async () => {
   // Register Service Worker for Offline Fortress Support
@@ -624,6 +604,7 @@ const initApp = async () => {
   const searchContainer = document.getElementById('search-container')!;
   const loginContainer = document.getElementById('login-container')!;
   const addForm = document.getElementById('add-form')!;
+  const toggleAddBtn = document.getElementById('toggle-add-btn')!;
   const syncButton = document.getElementById('sync-button') as HTMLButtonElement;
   const authTokenInput = document.getElementById('auth-token') as HTMLInputElement;
   const searchInput = document.getElementById('search') as HTMLInputElement;
@@ -641,7 +622,7 @@ const initApp = async () => {
   console.log('Initializing Pinboard PWA...');
   try {
     await db.init();
-    await tagger.init();
+    await populateTagSuggestions();
     console.log('Database Ready.');
 
     // Load persisted token
@@ -661,12 +642,18 @@ const initApp = async () => {
       // Unlock UI if we have a token AND (data exists OR setup ritual complete)
       const isUnlocked = hasToken && (hasData || hasSynced);
 
-      addForm.style.display = (isUnlocked && hasToken) ? 'flex' : 'none';
+      toggleAddBtn.style.display = isUnlocked ? 'inline' : 'none';
       searchContainer.style.display = (isUnlocked || hasData) ? 'block' : 'none';
+
+      // If we are locked, ensure form is hidden
+      if (!isUnlocked) {
+        addForm.style.display = 'none';
+        toggleAddBtn.innerHTML = '+';
+      }
 
       // If we have data, we hide the login container (unless token is missing)
       // If we have NO data, we ALWAYS show the sync button to allow re-ingestion
-      loginContainer.style.display = hasData && hasToken ? 'none' : 'block';
+      loginContainer.style.display = hasData && hasToken ? 'none' : 'flex';
 
       if (hasData) {
         statusEl.innerHTML = `${existing.length} ${!hasToken ? '<span class="token-error">(Sync Disabled: No Key)</span>' : ''}`;
@@ -681,6 +668,15 @@ const initApp = async () => {
     };
 
     (window as any).refreshApp = refreshData;
+
+    // Toggle Add Form handler
+    toggleAddBtn.onclick = (e) => {
+      e.preventDefault();
+      const isHidden = addForm.style.display === 'none';
+      addForm.style.display = isHidden ? 'flex' : 'none';
+      toggleAddBtn.innerHTML = isHidden ? '&times;' : '+';
+    };
+
     (window as any).deleteBookmark = async (href: string) => {
       await db.localDelete(href);
       await refreshData();
@@ -694,14 +690,6 @@ const initApp = async () => {
     const newUrlInput = document.getElementById('new-url') as HTMLInputElement;
     const newTitleInput = document.getElementById('new-title') as HTMLInputElement;
     const newTagsInput = document.getElementById('new-tags') as HTMLInputElement;
-
-    const updateSuggestions = () => {
-      const suggested = tagger.suggestTags(newUrlInput.value, newTitleInput.value);
-      if (suggested) newTagsInput.value = suggested;
-    };
-
-    newUrlInput.onblur = updateSuggestions;
-    newTitleInput.oninput = updateSuggestions;
 
     resetButton.onclick = async () => {
       if (confirm('DEEP RESET: Wipe database and credentials?')) {
@@ -730,12 +718,14 @@ const initApp = async () => {
 
       // 2. Refresh UI immediately
       await refreshData();
+      await populateTagSuggestions();
 
       // 3. Trigger background sync immediately
       sync.trigger();
 
       newUrlInput.value = '';
       newTitleInput.value = '';
+      newTagsInput.value = '';
     };
 
     // Search logic
@@ -787,6 +777,7 @@ const initApp = async () => {
         sync.startLoop();
 
         await refreshData();
+        await populateTagSuggestions();
       } catch (err) {
         console.error('Sync Error:', err);
         statusEl.textContent = 'Sync Failed: ' + err;

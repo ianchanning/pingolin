@@ -244,7 +244,7 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
 
-      case 'GET_METADATA':
+      case 'GET_METADATA': {
         const meta = db.exec({
           sql: 'SELECT * FROM metadata WHERE key = ?',
           bind: [payload],
@@ -253,6 +253,7 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'QUERY_RESULTS', payload: meta[0] || null, id });
         break;
+      }
 
       case 'SET_METADATA':
         db.exec({
@@ -262,7 +263,7 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
 
-      case 'GET_PENDING':
+      case 'GET_PENDING': {
         const pending = db.exec({
           sql: "SELECT * FROM bookmarks WHERE sync_status != 'SYNCHRONIZED'",
           returnValue: 'resultRows',
@@ -270,8 +271,9 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'QUERY_RESULTS', payload: pending, id });
         break;
+      }
 
-      case 'QUERY_DATE_COUNTS':
+      case 'QUERY_DATE_COUNTS': {
         const counts = db.exec({
           sql: `
             SELECT strftime('%Y-%m-%d', time) as date_str, COUNT(*) as qty 
@@ -283,8 +285,9 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'QUERY_RESULTS', payload: counts, id });
         break;
+      }
 
-      case 'GET_BOOKMARK_COUNT':
+      case 'GET_BOOKMARK_COUNT': {
         const rowCount = db.exec({
           sql: 'SELECT COUNT(*) as count FROM bookmarks',
           returnValue: 'resultRows',
@@ -292,6 +295,31 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'QUERY_RESULTS', payload: rowCount[0].count, id });
         break;
+      }
+
+      case 'GET_POPULAR_TAGS': {
+        const tagRows = db.exec({
+          sql: 'SELECT tags FROM bookmarks',
+          returnValue: 'resultRows',
+          rowMode: 'object'
+        });
+        
+        const counts: Record<string, number> = {};
+        for (const row of tagRows) {
+          const tList = (row.tags || '').split(' ').filter(Boolean);
+          for (const t of tList) {
+            counts[t] = (counts[t] || 0) + 1;
+          }
+        }
+        
+        const sortedTags = Object.entries(counts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 100)
+          .map(e => e[0]);
+          
+        self.postMessage({ type: 'QUERY_RESULTS', payload: sortedTags, id });
+        break;
+      }
 
       case 'RECONCILE_DATE':
         // Payload: { date: 'YYYY-MM-DD', bookmarks: [...] }
@@ -331,7 +359,7 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
 
-      case 'SET_SYNCHRONIZED':
+      case 'SET_SYNCHRONIZED': {
         // Payload is href
         db.transaction((db: any) => {
           const existing = db.exec({
@@ -355,8 +383,9 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
+      }
 
-      case 'GET_TAG_ALIASES':
+      case 'GET_TAG_ALIASES': {
         const aliases = db.exec({
           sql: 'SELECT * FROM tag_aliases',
           returnValue: 'resultRows',
@@ -364,6 +393,7 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'QUERY_RESULTS', payload: aliases, id });
         break;
+      }
 
       case 'UPSERT_TAG_ALIAS':
         db.exec({
@@ -372,6 +402,39 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
+
+      case 'SUGGEST_TAGS_HISTORY': {
+        // Payload: query string from title/url
+        const historyResults = db.exec({
+          sql: `
+            SELECT b.tags FROM bookmarks_fts f
+            JOIN bookmarks b ON f.rowid = b.rowid
+            WHERE bookmarks_fts MATCH ?
+            LIMIT 50
+          `,
+          bind: [payload],
+          returnValue: 'resultRows',
+          rowMode: 'object'
+        });
+        
+        const tagCounts: Record<string, number> = {};
+        for (const row of historyResults) {
+          const tags = (row.tags || '').split(' ').filter(Boolean);
+          for (const t of tags) {
+            tagCounts[t] = (tagCounts[t] || 0) + 1;
+          }
+        }
+        
+        // Return top 5 tags sorted by frequency
+        const topTags = Object.entries(tagCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(entry => entry[0]);
+          
+        self.postMessage({ type: 'QUERY_RESULTS', payload: topTags, id });
+        break;
+      }
+
       case 'DEBUG_CLEAR_DB':
         db.transaction((db: any) => {
           // Drop tables to bypass slow triggers
