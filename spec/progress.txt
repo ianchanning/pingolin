@@ -1,14 +1,23 @@
 # Project Progress
 
-## Phase 0: The Bridge (Cloudflare Worker Proxy) - COMPLETED
+## Phase 0: The Bridge (Cloudflare Worker Proxy) - COMPLETED & HARDENED
 - [x] Create a minimal Cloudflare Worker to proxy `api.pinboard.in`.
 - [x] Implement transparent header forwarding.
 - [x] Force `User-Agent: PinboardPWA/1.0` to prevent Pinboard API 500 errors.
-- [x] Implement CORS headers for client-side access.
-- [x] Pass through 429 Rate Limit responses.
+- [x] Implement unified CORS headers for client-side access (including errors).
+- [x] Pass through 429 Rate Limit responses and return 502 for transit failures.
+- [x] Safe body extraction and duplicate CORS header stripping.
+
+## Phase 1: The Engine (Web Worker & SQLite) - COMPLETED
+- [x] Initialize `sqlite-wasm` inside a dedicated background Web Worker.
+- [x] Setup OPFS (Origin Private File System) for durable persistence.
+- [x] Implement the Relational Schema (bookmarks, tag_aliases).
+- [x] Implement the FTS5 Virtual Table for lightning-fast search with automatic triggers.
+- [x] Build the message-passing bridge between UI thread and Worker.
+- [x] Vendor SQLite WASM files for 30Y durability.
 
 ## Next Step
-- **Phase 1: The Engine (Web Worker & SQLite)**
-    - Initialize `sqlite-wasm` inside a dedicated background Web Worker.
-    - Setup OPFS (Origin Private File System) for durable persistence.
-    - Implement the Relational Schema.
+- **Phase 2: Initial Ingestion (The "Big Pull")**
+    - Fetch full dataset using /posts/all via the proxy.
+    - Implement Chunked Insertion in the worker.
+    - Store update_time locally.

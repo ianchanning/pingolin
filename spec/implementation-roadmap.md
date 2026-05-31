@@ -14,11 +14,11 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that han
 
 ## Phase 1: The Engine (Web Worker & SQLite)
 **Goal:** Setup the persistent local storage layer using high-performance OPFS.
-- [ ] Initialize `sqlite-wasm` inside a dedicated background Web Worker.
-- [ ] Setup **OPFS** (Origin Private File System) for durable persistence.
-- [ ] Implement the Relational Schema (`bookmarks`, `tag_aliases`).
-- [ ] Implement the **FTS5 Virtual Table** for lightning-fast search.
-- [ ] Build the message-passing bridge between UI thread and Worker.
+- [x] Initialize `sqlite-wasm` inside a dedicated background Web Worker.
+- [x] Setup **OPFS** (Origin Private File System) for durable persistence.
+- [x] Implement the Relational Schema (`bookmarks`, `tag_aliases`).
+- [x] Implement the **FTS5 Virtual Table** for lightning-fast search.
+- [x] Build the message-passing bridge between UI thread and Worker.
 
 ## Phase 2: Initial Ingestion (The "Big Pull")
 **Goal:** Efficiently move 22,000+ server records into the local database.

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pinboard PWA</title>
+    <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Pinboard PWA</h1>
+            <div id="status">Initializing...</div>
+        </header>
+        <main>
+            <div id="search-container">
+                <input type="text" id="search" placeholder="Search 22,000+ bookmarks..." disabled>
+            </div>
+            <ul id="bookmark-list">
+                <!-- Bookmarks will appear here -->
+            </ul>
+        </main>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+</body>
+</html>
