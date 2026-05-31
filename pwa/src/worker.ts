@@ -1,4 +1,4 @@
-import sqlite3InitModule from '../public/vendor/sqlite3-bundler-friendly.mjs';
+import sqlite3InitModule from './vendor/sqlite3-bundler-friendly.mjs';
 
 /**
  * Pinboard PWA - Background Worker
@@ -23,6 +23,12 @@ CREATE TABLE IF NOT EXISTS bookmarks (
 CREATE TABLE IF NOT EXISTS tag_aliases (
     keyword TEXT PRIMARY KEY,
     mapped_tag TEXT NOT NULL
+);
+
+-- Metadata for Sync state
+CREATE TABLE IF NOT EXISTS metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT
 );
 
 -- FTS5 Search Table
@@ -59,6 +65,7 @@ const initDb = async () => {
     const sqlite3 = await sqlite3InitModule({
       print: console.log,
       printErr: console.error,
+      locateFile: (file) => `/vendor/${file}`,
     });
 
     console.log('Running SQLite3 version', sqlite3.version.libVersion);
@@ -128,26 +135,154 @@ self.onmessage = async (e) => {
         break;
 
       case 'UPSERT_BATCH':
-        // Payload is an array of bookmark objects
+        // Payload is an array of bookmark objects from server
         db.transaction((db: any) => {
-          const stmt = db.prepare(`
+          const insertStmt = db.prepare(`
             INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
             VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?)
-            ON CONFLICT(href) DO UPDATE SET
-              description=excluded.description,
-              extended=excluded.extended,
-              tags=excluded.tags,
-              time=excluded.time,
-              local_last_modified=excluded.local_last_modified
           `);
+          
+          const updateStmt = db.prepare(`
+            UPDATE bookmarks SET
+              description=?, extended=?, tags=?, time=?, local_last_modified=?
+            WHERE href=?
+          `);
+
+          const getStmt = db.prepare('SELECT * FROM bookmarks WHERE href=?');
+
           for (const b of payload) {
-            stmt.bind([b.href, b.description, b.extended, b.tags, b.time, Date.now()]);
-            stmt.step();
-            stmt.reset();
+            getStmt.bind([b.href]);
+            const existing = getStmt.step() ? getStmt.get([]) : null;
+            getStmt.reset();
+
+            if (!existing) {
+              // New record from server
+              insertStmt.bind([b.href, b.description, b.extended, b.tags, b.time, Date.now()]);
+              insertStmt.step();
+              insertStmt.reset();
+            } else if (existing.sync_status === 'SYNCHRONIZED') {
+              // Existing clean record: Overwrite with server data
+              updateStmt.bind([b.description, b.extended, b.tags, b.time, Date.now(), b.href]);
+              updateStmt.step();
+              updateStmt.reset();
+            } else if (existing.sync_status === 'PENDING_UPDATE') {
+              // CONFLICT: Merge & Overwrite
+              // 1. Tags: Union of local and server
+              const localTags = new Set((existing.tags || '').split(' ').filter(Boolean));
+              const serverTags = (b.tags || '').split(' ').filter(Boolean);
+              serverTags.forEach(t => localTags.add(t));
+              const mergedTags = Array.from(localTags).join(' ');
+
+              // 2. Metadata: Local overwrites server (so we keep existing values)
+              // 3. State: Remains PENDING_UPDATE
+              updateStmt.bind([existing.description, existing.extended, mergedTags, existing.time, Date.now(), b.href]);
+              updateStmt.step();
+              updateStmt.reset();
+            }
           }
-          stmt.finalize();
+          insertStmt.finalize();
+          updateStmt.finalize();
+          getStmt.finalize();
         });
         self.postMessage({ type: 'UPSERT_SUCCESS', id });
+        break;
+
+      case 'LOCAL_UPSERT':
+        // Payload is a single bookmark object
+        db.transaction((db: any) => {
+          const now = Date.now();
+          const existing = db.exec({
+            sql: 'SELECT sync_status FROM bookmarks WHERE href = ?',
+            bind: [payload.href],
+            returnValue: 'resultRows'
+          });
+          
+          const status = existing.length > 0 ? 'PENDING_UPDATE' : 'PENDING_INSERT';
+          
+          db.exec({
+            sql: `
+              INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(href) DO UPDATE SET
+                description=excluded.description,
+                extended=excluded.extended,
+                tags=excluded.tags,
+                time=excluded.time,
+                sync_status=excluded.sync_status,
+                local_last_modified=excluded.local_last_modified
+            `,
+            bind: [
+              payload.href, 
+              payload.description, 
+              payload.extended, 
+              payload.tags, 
+              payload.time || new Date().toISOString(),
+              status,
+              now
+            ]
+          });
+        });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
+
+      case 'GET_METADATA':
+        const meta = db.exec({
+          sql: 'SELECT * FROM metadata WHERE key = ?',
+          bind: [payload],
+          returnValue: 'resultRows',
+          rowMode: 'object'
+        });
+        self.postMessage({ type: 'QUERY_RESULTS', payload: meta[0] || null, id });
+        break;
+
+      case 'SET_METADATA':
+        db.exec({
+          sql: 'INSERT INTO metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+          bind: [payload.key, payload.value]
+        });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
+
+      case 'GET_PENDING':
+        const pending = db.exec({
+          sql: "SELECT * FROM bookmarks WHERE sync_status != 'SYNCHRONIZED'",
+          returnValue: 'resultRows',
+          rowMode: 'object'
+        });
+        self.postMessage({ type: 'QUERY_RESULTS', payload: pending, id });
+        break;
+
+      case 'LOCAL_DELETE':
+        // Payload is href
+        db.exec({
+          sql: "UPDATE bookmarks SET sync_status = 'PENDING_DELETE', local_last_modified = ? WHERE href = ?",
+          bind: [Date.now(), payload]
+        });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
+
+      case 'SET_SYNCHRONIZED':
+        // Payload is href
+        db.transaction((db: any) => {
+          const existing = db.exec({
+            sql: 'SELECT sync_status FROM bookmarks WHERE href = ?',
+            bind: [payload],
+            returnValue: 'resultRows'
+          });
+          
+          if (existing.length > 0 && existing[0] === 'PENDING_DELETE') {
+            db.exec({
+              sql: 'DELETE FROM bookmarks WHERE href = ?',
+              bind: [payload]
+            });
+          } else {
+            db.exec({
+              sql: "UPDATE bookmarks SET sync_status = 'SYNCHRONIZED' WHERE href = ?",
+              bind: [payload]
+            });
+          }
+        });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
 
       case 'DEBUG_CLEAR_DB':

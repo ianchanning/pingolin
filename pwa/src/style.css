@@ -77,6 +77,25 @@ header {
   overflow: hidden;
 }
 
+#add-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+#add-form input {
+  padding: 0.3rem;
+  border: 1px solid var(--border-color);
+}
+
+#add-form button {
+  padding: 0.3rem 1rem;
+  background: var(--text-color);
+  color: var(--bg-color);
+  border: none;
+  cursor: pointer;
+}
+
 #indicators {
   display: flex;
   gap: 1rem;
@@ -99,6 +118,12 @@ header {
 #sync-indicator {
   background: #00ff00;
   color: #000;
+}
+
+.token-error {
+  color: #ff0000;
+  font-size: 0.7rem;
+  font-weight: bold;
 }
 
 .bookmark a {

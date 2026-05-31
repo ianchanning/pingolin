@@ -30,8 +30,16 @@
 - [x] Implement **Honest Sync Indicator** for background operations.
 - [x] Display result counts and domain metadata in the list.
 
+## Phase 4: Local-First Synchronization - COMPLETED
+- [x] Implement local writes (Add/Delete) with **PENDING** status.
+- [x] Build **Background Sync Loop** (1-minute interval) using `/posts/update`.
+- [x] Implement **Upstream Flush** with mandatory 3-second delay between write-intensive requests.
+- [x] Implement **Conflict Resolution** (Merge & Overwrite strategy).
+- [x] Add **Token Persistence** via the database metadata table.
+- [x] Integrated **Honest Sync Indicator** with pending record status.
+
 ## Next Step
-- **Phase 4: Local-First Synchronization**
-    - Implement local writes (Add/Edit) with PENDING status.
-    - Build Background Sync Loop (Delta sync via /posts/update).
-    - Implement Conflict Resolution (Merge & Overwrite).
+- **Phase 5: PWA Hardening**
+    - Setup Service Worker for offline asset caching.
+    - Implement Heuristic Tagging engine.
+    - Final 30Y durability check (0 external dependencies).

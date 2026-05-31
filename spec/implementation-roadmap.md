@@ -38,15 +38,15 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that han
 
 ## Phase 4: Local-First Synchronization
 **Goal:** Enable offline writes and robust conflict resolution.
-- [ ] Implement local write (Set status to `PENDING_INSERT/UPDATE`).
-- [ ] Build the Background Sync Loop:
+- [x] Implement local write (Set status to `PENDING_INSERT/UPDATE`).
+- [x] Build the Background Sync Loop:
     - On Startup: Check `/posts/update` to detect server changes.
     - If needed: Fetch only new posts.
-- [ ] Implement **Upstream Flush**:
+- [x] Implement **Upstream Flush**:
     - Iterate through pending records.
     - **Constraint:** Respect 3-second delay between write requests.
-- [ ] Conflict Logic: Implement the "Merge & Overwrite" strategy.
-- [ ] **Tag Rename Workaround:** Implement "Add New Tag + Global Delete Old" logic to bypass broken `tags/rename` endpoint.
+- [x] Conflict Logic: Implement the "Merge & Overwrite" strategy.
+- [x] **Tag Rename Workaround:** Implement "Add New Tag + Global Delete Old" logic to bypass broken `tags/rename` endpoint.
 
 ## Phase 5: PWA Hardening
 **Goal:** Offline application availability and final 30Y durability check.
