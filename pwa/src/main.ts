@@ -123,7 +123,7 @@ class VirtualizedList {
   private canvas: HTMLElement;
   private list: HTMLElement;
   private items: any[] = [];
-  private itemHeight = 100;
+  private itemHeight = 120;
   private buffer = 10;
   private lastRange: [number, number] = [-1, -1];
   private ticking = false;
@@ -178,9 +178,11 @@ class VirtualizedList {
             ${b.sync_status !== 'SYNCHRONIZED' ? ' 🔄' : ''}
             <a href="${b.href}" target="_blank">${b.description}</a>
           </h3>
-          <div class="tags">${b.tags.split(' ').join(', ') || ''}</div>
+          ${b.tags ? `<div class="tags">${b.tags.split(' ').join(', ')}</div>` : ''}
         </div>
-        <button class="delete-btn" data-href="${b.href}">&times;</button>
+        <div class="tags">
+          <button class="delete-btn" data-href="${b.href}">delete</button>
+        </div>
       `;
       fragment.appendChild(li);
     }
