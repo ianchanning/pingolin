@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pinboard PWA</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
     <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
@@ -14,22 +18,24 @@
                 <input type="text" id="new-url" placeholder="https://...">
                 <input type="text" id="new-title" placeholder="Title">
                 <input type="text" id="new-tags" placeholder="Tags (auto-suggested)">
-                <button id="add-button">Add</button>
+                <button id="add-button">+</button>
             </div>
             <div id="indicators">
                 <span id="offline-indicator" class="indicator">OFFLINE</span>
-                <span id="sync-indicator" class="indicator">SYNCING...</span>
+                <span id="sync-indicator" class="indicator">SYNCING</span>
                 <div id="status">Initializing...</div>
             </div>
         </header>
         <main>
             <div id="login-container" style="display: none;">
                 <input type="password" id="auth-token" placeholder="username:TOKEN">
-                <button id="sync-button">Initial Sync</button>
-                <button id="reset-button" style="background: #666; font-size: 0.6rem;">Deep Reset</button>
+                <button id="sync-button">Sync</button>
+                <button id="reset-button">Reset</button>
             </div>
             <div id="search-container" style="display: none;">
-                <input type="text" id="search" placeholder="Search...">
+                <div id="search-form">
+                    <input type="text" id="search" placeholder="Search...">
+                </div>
                 <div id="viewport">
                     <div id="canvas">
                         <ul id="bookmark-list"></ul>
