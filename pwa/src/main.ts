@@ -123,7 +123,7 @@ class VirtualizedList {
   private canvas: HTMLElement;
   private list: HTMLElement;
   private items: any[] = [];
-  private itemHeight = 80;
+  private itemHeight = 100;
   private buffer = 10;
   private lastRange: [number, number] = [-1, -1];
   private ticking = false;
@@ -173,12 +173,14 @@ class VirtualizedList {
       li.style.transform = `translateY(${i * this.itemHeight}px)`;
       li.style.willChange = 'transform';
       li.innerHTML = `
-        <div style="display: flex; justify-content: space-between;">
-          <a href="${b.href}" target="_blank">${b.description}</a>
-          <button class="delete-btn" data-href="${b.href}">Delete</button>
+        <div>
+          <h3>
+            ${b.sync_status !== 'SYNCHRONIZED' ? ' 🔄' : ''}
+            <a href="${b.href}" target="_blank">${b.description}</a>
+          </h3>
+          <div class="tags">${b.tags.split(' ').join(', ') || ''}</div>
         </div>
-        <div class="tags">${b.tags || ''}</div>
-        <div style="font-size: 0.7rem; color: #999;">${new URL(b.href).hostname} ${b.sync_status !== 'SYNCHRONIZED' ? ' 🔄' : ''}</div>
+        <button class="delete-btn" data-href="${b.href}">&times;</button>
       `;
       fragment.appendChild(li);
     }
@@ -355,7 +357,7 @@ class SyncOrchestrator {
         const tags = new Set((b.tags || '').split(' ').filter(t => t !== oldTag));
         tags.add(newTag);
         b.tags = Array.from(tags).join(' ');
-        
+
         console.log(`[Sync] Updating ${b.href}...`);
         // We write locally first
         await db.localUpsert(b);
@@ -573,14 +575,14 @@ class HeuristicTagger {
 
   suggestTags(url: string, title: string): string {
     const tags = new Set<string>();
-    
+
     // 1. Domain-based tagging
     try {
       const domain = new URL(url).hostname.replace('www.', '');
       if (domain.includes('github.com')) tags.add('code');
       if (domain.includes('arxiv.org')) tags.add('paper academic');
       if (domain.includes('youtube.com')) tags.add('video');
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. Keyword-based mapping
     const tokens = `${title} ${url}`.toLowerCase().split(/[^a-z0-9]+/);
@@ -656,16 +658,16 @@ const initApp = async () => {
 
       // Unlock UI if we have a token AND (data exists OR setup ritual complete)
       const isUnlocked = hasToken && (hasData || hasSynced);
-      
+
       addForm.style.display = (isUnlocked && hasToken) ? 'flex' : 'none';
       searchContainer.style.display = (isUnlocked || hasData) ? 'block' : 'none';
-      
+
       // If we have data, we hide the login container (unless token is missing)
       // If we have NO data, we ALWAYS show the sync button to allow re-ingestion
       loginContainer.style.display = hasData && hasToken ? 'none' : 'block';
 
       if (hasData) {
-        statusEl.innerHTML = `${existing.length} bookmarks. ${!hasToken ? '<span class="token-error">(Sync Disabled: No Key)</span>' : ''}`;
+        statusEl.innerHTML = `${existing.length} ${!hasToken ? '<span class="token-error">(Sync Disabled: No Key)</span>' : ''}`;
         vList.updateItems(existing);
       } else if (isUnlocked) {
         statusEl.textContent = 'Fortress initialized. No bookmarks found on server.';
@@ -749,7 +751,7 @@ const initApp = async () => {
         try {
           const results = await db.search(query);
           vList.updateItems(results);
-          statusEl.textContent = `${results.length} results.`;
+          statusEl.textContent = `${results.length}`;
         } catch (e) {
           console.error('Search error:', e);
         }
