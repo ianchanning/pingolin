@@ -182,7 +182,7 @@ class VirtualizedList {
             ${b.sync_status !== 'SYNCHRONIZED' ? ' 🔄' : ''}
             <a href="${b.href}" target="_blank">${b.description}</a>
           </h3>
-          ${b.tags ? `<div class="tags">${b.tags.split(' ').join(', ')}</div>` : ''}
+          ${b.tags ? `<div class="tags">Tags: ${b.tags.split(' ').join(', ')}</div>` : ''}
         </div>
         <div class="tags">
           <button class="delete-btn" data-href="${b.href}">delete</button>
@@ -586,7 +586,7 @@ const populateTagSuggestions = async (inputVal: string = '') => {
   if (popularTagsCache.length === 0) {
     popularTagsCache = await db.getPopularTags();
   }
-  
+
   const datalist = document.getElementById('tag-suggestions')!;
   if (!datalist) return;
 
@@ -731,7 +731,7 @@ const initApp = async () => {
 
       // 2. Refresh UI immediately
       await refreshData();
-      popularTagsCache = []; 
+      popularTagsCache = [];
       await populateTagSuggestions();
 
       // 3. Trigger background sync immediately
@@ -791,7 +791,7 @@ const initApp = async () => {
         sync.startLoop();
 
         await refreshData();
-        popularTagsCache = []; 
+        popularTagsCache = [];
         await populateTagSuggestions();
       } catch (err) {
         console.error('Sync Error:', err);
