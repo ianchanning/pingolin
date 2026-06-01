@@ -44,6 +44,45 @@ Visit `http://localhost:5173` in your browser.
 4.  **Add/Delete:** Operations are **Local-First**. Changes appear in the UI instantly and are marked with a `🔄` icon until successfully flushed to Pinboard by the background sync loop (60s interval or immediate trigger).
 5.  **Offline Mode:** If you lose connectivity, a red **OFFLINE** banner appears. You can still search and add/delete bookmarks; they will sync automatically when you reconnect.
 
+## The Technical Map: Pinboard API v1 Nuances
+
+Building this fortress required deep-packet inspection of the aging Pinboard v1 backend. Here is the technical ground truth we discovered:
+
+### 1. The Handshake (`/posts/update`)
+*   **Purpose:** Determine if the local fortress needs a sync.
+*   **Payload:** Tiny JSON object: `{"update_time": "ISO8601"}`.
+*   **The Trap:** This timestamp **only** changes on additions or edits. **Deletions are invisible to this endpoint.**
+*   **Throttling:** Requires a mandatory 5s pause after calling.
+
+### 2. The Big Pull (`/posts/all`)
+*   **Purpose:** Full ingestion or delta updates.
+*   **Parameter:** `fromdt` used for Fast-Path Deltas.
+*   **The Trap:** Returns the **entire dataset** as a single JSON array. For 22,000+ bookmarks, this is a ~15MB stream. 
+*   **PWA Fix:** We ingest this in 500-record chunks to prevent worker-thread memory pressure.
+*   **Mandatory Identity:** Returns `500 Error` if a `User-Agent` is missing.
+
+### 3. The Dates Hack (`/posts/dates`)
+*   **Purpose:** Pinpointing deletions without downloading all 15MB of data.
+*   **The Ghost Signal:** On large accounts, the JSON endpoint (`format=json`) returns `200 OK` with `Content-Length: 0`. 
+*   **Quantum Leap:** The proxy now strips the JSON request, fetches authoritative **XML**, and performs a regex-based transformation into JSON.
+*   **Parity Logic:** We compare local date-counts vs. server counts. Any mismatch triggers a targeted reconcile.
+
+### 4. Precision Reconciliation (`/posts/get`)
+*   **Purpose:** authoritatively fetch all bookmarks for a specific day.
+*   **Parameter:** `dt=YYYY-MM-DD`.
+*   **Structure:** Returns a wrapper object `{"posts": [...]}`. (Note: Many wrappers mistakenly expect a raw array).
+
+### 5. Local-First Write-Back (`/posts/add` & `/posts/delete`)
+*   **Atomic Upsert:** We use `/posts/add?replace=yes` for both inserts and updates.
+*   **Patience Protocol:** Every write request requires a **3-5 second mandatory throttle**. Rapid fire requests trigger a "Quiet 429" (Silent 0-byte response).
+
+### 6. The Broken Renamer (`/tags/rename`)
+*   **Reality:** This endpoint is unstable and frequently returns 500s.
+*   **Workaround:** We perform a manual loop:
+    1.  Update all affected bookmarks locally.
+    2.  Push them upstream via `/posts/add`.
+    3.  Globally delete the old tag via `/tags/delete`.
+
 ## Developer & Debugging Tools
 
 Access these commands directly from the Browser Console (F12):

@@ -64,3 +64,33 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that han
     - [x] Domain-based tagging logic.
     - [x] **History-based Co-occurrence logic.**
 - [x] Asset Audit: Ensure 0 external dependencies (Vendor all scripts like `sqlite-wasm` locally).
+
+---
+
+## Retrospective: The "What We Missed" Log
+
+The voyage from plan to reality encountered several "Quantum Gremlins" that required surgical intervention.
+
+### 1. The Async State Lock (Bridge Stability)
+- **Problem:** The original `DatabaseBridge` temporarily replaced its message handler during sync, causing other commands (like `debugClearDb`) to hang if a sync failed or was slow.
+- **Fix:** Refactored to a **Static Message Handler** with request IDs and a persistent response map.
+
+### 2. The Browser Rendering Schism (Firefox Scroll Warnings)
+- **Problem:** Firefox warned about "scroll-linked positioning" because we moved DOM elements directly on the scroll event.
+- **Fix:** Switched to **requestAnimationFrame (rAF)** and **GPU-accelerated transforms** (`translateY`), achieving silky smooth 60fps scrolling.
+
+### 3. The Vite Asset Trap (MIME Type Errors)
+- **Problem:** Vite treats `public/` files differently than `src/` modules. Importing SQLite from `public/` caused MIME type errors in the Service Worker.
+- **Fix:** Split the engine: JS modules moved to `src/vendor`, while raw binaries (WASM) stayed in `public/vendor`.
+
+### 4. Worker Scope Collisions
+- **Problem:** TypeScript/ES6 `switch` cases share a scope. Declaring `const counts` in two different cases crashed the worker.
+- **Fix:** Wrapped all case handlers in **Private Blocks `{}`** to ensure perfect isolation.
+
+### 5. The "Ghost User" Deadlock
+- **Problem:** Logic assumed if `bookmarkCount === 0`, we were in "Setup Mode." Users with 0 bookmarks on the server could never leave the setup screen.
+- **Fix:** Introduced the **Handshake Sentinel** (`last_full_sync_time`). If a sync has been attempted, we unlock the UI regardless of data count.
+
+### 6. The 0-Byte Vacuum (Proxy Hardening)
+- **Problem:** Pinboard returned 200 OK but 0 bytes for large JSON date distributions.
+- **Fix:** Implemented **XML-to-JSON Alchemy**. The proxy now fetches stable XML and transforms it into JSON via regex, bypassing the failing origin serializer.
