@@ -17,12 +17,17 @@ const APP_ASSETS = [
   '/src/style.css'
 ];
 
-// Install Event: Cache everything
+// Install Event: Cache what we can
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Take control immediately
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching Fortress Assets');
-      return cache.addAll([...VENDOR_ASSETS, ...APP_ASSETS]);
+      // Use map and individual add to prevent one 404 from failing the whole cache
+      // In production, /src/ files won't exist at these paths.
+      return Promise.allSettled(
+        [...VENDOR_ASSETS, ...APP_ASSETS].map(url => cache.add(url))
+      );
     })
   );
 });
@@ -30,13 +35,31 @@ self.addEventListener('install', (event) => {
 // Activate Event: Cleanup
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      );
-    })
+    Promise.all([
+      caches.keys().then((keys) => {
+        return Promise.all(
+          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        );
+      }),
+      self.clients.claim() // Take control of all clients immediately
+    ])
   );
 });
+
+// Helper to inject COOP/COEP headers
+function enhanceResponse(response) {
+  if (!response) return response;
+  
+  const newHeaders = new Headers(response.headers);
+  newHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
+  newHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
+  
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders
+  });
+}
 
 // Fetch Event: Mixed Strategy
 self.addEventListener('fetch', (event) => {
@@ -47,24 +70,26 @@ self.addEventListener('fetch', (event) => {
   // Strategy A: Cache-First for heavy/static vendor assets
   if (VENDOR_ASSETS.some(asset => url.pathname.endsWith(asset))) {
     event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
+      caches.match(event.request).then((cached) => {
+        if (cached) return enhanceResponse(cached);
+        return fetch(event.request).then(enhanceResponse);
+      })
     );
     return;
   }
 
   // Strategy B: Network-First for app logic/styles
-  // This prevents the "MIME Type" mismatch and "Stale CSS" issues during dev
   event.respondWith(
     fetch(event.request)
       .then((response) => {
         // Update cache with fresh version
         const clone = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        return response;
+        return enhanceResponse(response);
       })
       .catch(() => {
         // Fallback to cache if network is dead
-        return caches.match(event.request);
+        return caches.match(event.request).then(enhanceResponse);
       })
   );
 });

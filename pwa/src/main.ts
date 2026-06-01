@@ -603,6 +603,22 @@ const initApp = async () => {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').then(reg => {
         console.log('[SW] Service Worker Registered', reg.scope);
+        
+        // Quantum Leap: GitHub Pages Header Hack
+        // If we are not cross-origin isolated, it means the COOP/COEP headers are missing.
+        // Once the Service Worker is active and controlling the page, it will inject them.
+        // We reload once to 'boot' into the secure context.
+        const isIsolated = window.crossOriginIsolated;
+        const hasReloaded = sessionStorage.getItem('sw-bootstrap-reloaded');
+
+        if (!isIsolated && reg.active && !hasReloaded) {
+          console.log('[SW] Secure context established. Reloading to unlock fortress...');
+          sessionStorage.setItem('sw-bootstrap-reloaded', 'true');
+          location.reload();
+        } else if (isIsolated) {
+          console.log('[SW] Fortress is secure (CrossOriginIsolated).');
+          sessionStorage.removeItem('sw-bootstrap-reloaded');
+        }
       }).catch(err => {
         console.error('[SW] Registration Failed', err);
       });
