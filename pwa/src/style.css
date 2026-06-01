@@ -64,7 +64,10 @@ select {
 label input {
   width: auto;
 }
-    
+
+#logo {
+  vertical-align: bottom;
+}
 
 #add-form {
   display: flex;
