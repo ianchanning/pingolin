@@ -66,6 +66,10 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
+  
+  // Filter for web schemes only. 
+  // This prevents 'chrome-extension' or 'data' schemes from crashing the cache.
+  if (!['http:', 'https:'].includes(url.protocol)) return;
 
   // Strategy A: Cache-First for heavy/static vendor assets
   if (VENDOR_ASSETS.some(asset => url.pathname.endsWith(asset))) {
