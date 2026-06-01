@@ -4,7 +4,7 @@ var A=Object.defineProperty;var D=(d,e,o)=>e in d?A(d,e,{enumerable:!0,configura
             ${l.sync_status!=="SYNCHRONIZED"?" 🔄":""}
             <a href="${l.href}" target="_blank">${l.description}</a>
           </h3>
-          ${l.tags?`<div class="tags">${l.tags.split(" ").join(", ")}</div>`:""}
+          ${l.tags?`<div class="tags">Tags: ${l.tags.split(" ").join(", ")}</div>`:""}
         </div>
         <div class="tags">
           <button class="delete-btn" data-href="${l.href}">delete</button>
