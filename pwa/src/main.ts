@@ -671,7 +671,7 @@ const initApp = async () => {
         statusEl.textContent = 'Fortress initialized. No bookmarks found on server.';
         vList.updateItems([]);
       } else {
-        statusEl.textContent = 'Empty database. Ready for initial sync.';
+        statusEl.innerHTML = 'Empty database. Insert your token from <a href="https://pinboard.in/settings/password">pinboard.in/settings/password</a>.';
         vList.updateItems([]);
       }
     };
