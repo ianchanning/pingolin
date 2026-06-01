@@ -180,6 +180,7 @@ label input {
   gap: 1rem;
   align-items: center;
   justify-content: flex-end;
+  padding: 0 10%;
 }
 
 .indicator {
@@ -198,8 +199,12 @@ label input {
   color: #999;
 }
 
+main {
+  padding: 0 10%;
+}
+
 #login-container {
-  padding-top: 1rem;
+  padding: 1rem 0 10%;
   gap: 0.5rem;
   justify-content: flex-end;
 }
