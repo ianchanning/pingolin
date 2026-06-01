@@ -1,4 +1,6 @@
-# Pinboard PWA: Steel & Stone Edition (0R/0M/30Y)
+# Pingolin: Steel & Stone Edition (0R/0M/30Y)
+
+A mashup of pinboard.in and ma.gnol.ia.
 
 A liberated, offline-first, zero-maintenance Progressive Web App (PWA) designed to manage tens of thousands of Pinboard bookmarks with "Steel and Stone" reliability. Built to last 30 years without intervention.
 
