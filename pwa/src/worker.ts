@@ -467,22 +467,26 @@ self.onmessage = async (e) => {
 
 const fetchAllFromServer = async (proxyUrl: string, authToken: string, id: string) => {
   try {
-    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Fetching from Pinboard...' }, id });
+    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'NETWORK: Requesting full dataset...' }, id });
 
     const url = `${proxyUrl}/posts/all?auth_token=${authToken}&format=json`;
     const response = await fetch(url);
 
     if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error('Pinboard API Rate Limit (429). Please wait 5 minutes.');
+      }
       throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
     }
 
-    // Pinboard /posts/all returns the entire array. 
-    // For 22k records, this is ~10-15MB of JSON.
+    // Pinboard /posts/all returns the entire array in ONE response.
     const bookmarks = await response.json();
-    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: `Downloaded ${bookmarks.length} records. Ingesting...` }, id });
+    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: `LOCAL: Ingesting ${bookmarks.length} records into SQLite...` }, id });
 
-    // Chunked insertion to avoid locking the worker for too long and manage memory
+    // Chunked insertion is purely LOCAL to keep the UI responsive.
+    // There are NO network requests happening during this loop.
     const CHUNK_SIZE = 500;
+
     for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
       const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
 
@@ -505,15 +509,19 @@ const fetchAllFromServer = async (proxyUrl: string, authToken: string, id: strin
         stmt.finalize();
       });
 
-      self.postMessage({
-        type: 'SYNC_PROGRESS',
-        payload: {
-          status: `Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`,
+      self.postMessage({ 
+        type: 'SYNC_PROGRESS', 
+        payload: { 
+          status: `LOCAL: Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`,
           progress: (i + CHUNK_SIZE) / bookmarks.length
-        },
-        id
+        }, 
+        id 
       });
-    }
+
+      // Micro-yield to allow the worker event loop to process messages
+      await new Promise(resolve => setTimeout(resolve, 0));
+      }
+
 
     self.postMessage({ type: 'SYNC_COMPLETE', payload: { count: bookmarks.length }, id });
 

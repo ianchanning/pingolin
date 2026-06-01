@@ -76,9 +76,13 @@ Building this fortress required deep-packet inspection of the aging Pinboard v1 
 
 ### 5. Local-First Write-Back (`/posts/add` & `/posts/delete`)
 *   **Atomic Upsert:** We use `/posts/add?replace=yes` for both inserts and updates.
-*   **Patience Protocol:** Every write request requires a **3-5 second mandatory throttle**. Rapid fire requests trigger a "Quiet 429" (Silent 0-byte response).
+*   **Patience Protocol:** We enforce a **5-second mandatory throttle** *between* every consecutive API call. This prevents "Quiet 429" (Silent 0-byte) responses and IP blocks. Startup is immediate, but consecutive rituals are paced with stone-cold patience.
 
-### 6. The Broken Renamer (`/tags/rename`)
+### 6. Local Ingestion (Worker Thread)
+*   **Zero Network Noise:** Once the "Big Pull" JSON is downloaded, the ingestion into SQLite happens entirely offline. 
+*   **Event-Loop Yielding:** The worker yields to the event loop between 500-record chunks to ensure progress messages are dispatched smoothly and the browser remains responsive.
+
+### 7. The Broken Renamer (`/tags/rename`)
 *   **Reality:** This endpoint is unstable and frequently returns 500s.
 *   **Workaround:** We perform a manual loop:
     1.  Update all affected bookmarks locally.

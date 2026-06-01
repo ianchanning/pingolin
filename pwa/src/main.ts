@@ -252,8 +252,10 @@ class SyncOrchestrator {
       console.warn('[Sync] Loop aborted: No authToken set. Please enter your Pinboard key.');
       return;
     }
+
     this.isSyncing = true;
     this.needsSync = false;
+
     this.syncIndicator.style.display = 'block';
 
     try {
@@ -794,6 +796,10 @@ const initApp = async () => {
         await db.fetchAllFromServer(proxyUrl, token, (progress) => {
           statusEl.textContent = progress.status;
         });
+
+        // MANDATORY PATIENCE: After a massive /posts/all, give the server a breather
+        statusEl.textContent = 'Ingestion complete. Resting...';
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         // Save token and start background sync
         await db.setMetadata('auth_token', token);
