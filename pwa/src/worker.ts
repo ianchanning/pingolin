@@ -128,21 +128,42 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'INIT_SUCCESS', id });
         break;
 
-      case 'QUERY_SEARCH':
+      case 'QUERY_SEARCH': {
         // Payload is the search term
-        const results = db.exec({
-          sql: `
+        let sql = '';
+        let bind: any[] = [];
+
+        if (payload.startsWith('#')) {
+          // Exact Tag Match mode
+          const tagName = payload.substring(1);
+          sql = `
+            SELECT * FROM bookmarks 
+            WHERE (' ' || tags || ' ') LIKE ?
+            ORDER BY time DESC
+          `;
+          bind = [`% ${tagName} %`];
+        } else {
+          // General FTS5 mode - Wrap in quotes to avoid syntax errors with colons/dots
+          sql = `
             SELECT b.* FROM bookmarks_fts f
             JOIN bookmarks b ON f.rowid = b.rowid
             WHERE bookmarks_fts MATCH ?
             ORDER BY b.time DESC
-          `,
-          bind: [payload],
+          `;
+          // Sanitize: Escape any existing quotes and wrap the whole thing
+          const sanitized = payload.replace(/"/g, '""');
+          bind = [`"${sanitized}"`];
+        }
+
+        const results = db.exec({
+          sql: sql,
+          bind: bind,
           returnValue: 'resultRows',
           rowMode: 'object'
         });
         self.postMessage({ type: 'QUERY_RESULTS', payload: results, id });
         break;
+      }
 
       case 'QUERY_ALL':
         const all = db.exec({
@@ -303,7 +324,7 @@ self.onmessage = async (e) => {
           returnValue: 'resultRows',
           rowMode: 'object'
         });
-        
+
         const counts: Record<string, number> = {};
         for (const row of tagRows) {
           const tList = (row.tags || '').split(' ').filter(Boolean);
@@ -311,12 +332,12 @@ self.onmessage = async (e) => {
             counts[t] = (counts[t] || 0) + 1;
           }
         }
-        
+
         const sortedTags = Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 100)
           .map(e => e[0]);
-          
+
         self.postMessage({ type: 'QUERY_RESULTS', payload: sortedTags, id });
         break;
       }
@@ -368,7 +389,7 @@ self.onmessage = async (e) => {
             returnValue: 'resultRows',
             rowMode: 'object'
           });
-          
+
           if (existing.length > 0 && existing[0].sync_status === 'PENDING_DELETE') {
             db.exec({
               sql: 'DELETE FROM bookmarks WHERE href = ?',
@@ -416,7 +437,7 @@ self.onmessage = async (e) => {
           returnValue: 'resultRows',
           rowMode: 'object'
         });
-        
+
         const tagCounts: Record<string, number> = {};
         for (const row of historyResults) {
           const tags = (row.tags || '').split(' ').filter(Boolean);
@@ -424,13 +445,13 @@ self.onmessage = async (e) => {
             tagCounts[t] = (tagCounts[t] || 0) + 1;
           }
         }
-        
+
         // Return top 5 tags sorted by frequency
         const topTags = Object.entries(tagCounts)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 5)
           .map(entry => entry[0]);
-          
+
         self.postMessage({ type: 'QUERY_RESULTS', payload: topTags, id });
         break;
       }
@@ -480,7 +501,8 @@ const fetchAllFromServer = async (proxyUrl: string, authToken: string, id: strin
     }
 
     // Pinboard /posts/all returns the entire array in ONE response.
-    const bookmarks = await response.json();
+    let bookmarks = await response.json();
+
     self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: `LOCAL: Ingesting ${bookmarks.length} records into SQLite...` }, id });
 
     // Chunked insertion is purely LOCAL to keep the UI responsive.
@@ -509,18 +531,18 @@ const fetchAllFromServer = async (proxyUrl: string, authToken: string, id: strin
         stmt.finalize();
       });
 
-      self.postMessage({ 
-        type: 'SYNC_PROGRESS', 
-        payload: { 
+      self.postMessage({
+        type: 'SYNC_PROGRESS',
+        payload: {
           status: `LOCAL: Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`,
           progress: (i + CHUNK_SIZE) / bookmarks.length
-        }, 
-        id 
+        },
+        id
       });
 
       // Micro-yield to allow the worker event loop to process messages
       await new Promise(resolve => setTimeout(resolve, 0));
-      }
+    }
 
 
     self.postMessage({ type: 'SYNC_COMPLETE', payload: { count: bookmarks.length }, id });
