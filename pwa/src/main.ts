@@ -178,8 +178,8 @@ class VirtualizedList {
       li.className = 'bookmark';
       li.style.transform = `translateY(${i * this.itemHeight}px)`;
       li.style.willChange = 'transform';
-      
-      const tagsHtml = (b.tags || '').split(' ').filter(Boolean).map(t => 
+
+      const tagsHtml = (b.tags || '').split(' ').filter(Boolean).map(t =>
         `<a href="?q=%23${encodeURIComponent(t)}" class="tag-link" data-tag="${t}">${t}</a>`
       ).join(', ');
 
@@ -266,7 +266,7 @@ class SyncOrchestrator {
 
   async startLoop() {
     if (this.isSyncing || !this.authToken) return;
-    
+
     // 0. Sanity Check: If DB is empty, abort.
     const count = await db.getBookmarkCount();
     if (count === 0) {
@@ -280,7 +280,7 @@ class SyncOrchestrator {
 
     try {
       console.log('[Sync] Starting Precision Sync Loop (The Dates Hack)...');
-      
+
       // 1. Push PENDING writes first
       const pushedCount = await this.pushPending();
       if (pushedCount > 0 && (window as any).refreshApp) {
@@ -389,7 +389,7 @@ class SyncOrchestrator {
         const tags = new Set((b.tags || '').split(' ').filter(t => t !== oldTag));
         tags.add(newTag);
         b.tags = Array.from(tags).join(' ');
-        
+
         console.log(`[Sync] Updating ${b.href}...`);
         // We write locally first
         await db.localUpsert(b);
@@ -425,13 +425,13 @@ class SyncOrchestrator {
 
   private async runDatesSentinel(): Promise<boolean> {
     console.log('[Sync] Sentinel: Start');
-    
+
     try {
       // 1. Get Local Counts
       console.log('[Sync] Sentinel: Requesting Local Counts');
       const localCountsArray = await db.getDateCounts();
       console.log(`[Sync] Sentinel: Received ${localCountsArray.length} local date buckets`);
-      
+
       const localCounts: Record<string, number> = {};
       let localTotal = 0;
       localCountsArray.forEach((row: any) => {
@@ -455,7 +455,7 @@ class SyncOrchestrator {
 
       if (!resp.ok) throw new Error(`Dates Sentinel fetch failed: ${resp.status}`);
       console.log(`[Sync] Sentinel: Received ${text.length} bytes from server`);
-      
+
       if (!text || text.trim() === '') {
         console.warn('[Sync] Sentinel: Abort - Server returned empty body.');
         return false;
@@ -468,7 +468,7 @@ class SyncOrchestrator {
         console.error('[Sync] Sentinel: JSON Parse Failed. Raw text:', text.substring(0, 500));
         throw parseErr;
       }
-      
+
       console.log('[Sync] Sentinel: Successfully parsed Server Dates');
       const serverCounts: Record<string, number> = {};
       let serverTotal = 0;
@@ -529,7 +529,7 @@ class SyncOrchestrator {
     for (const b of pending) {
       try {
         console.log(`[Sync] Pushing ${b.sync_status} for ${b.href}...`);
-        
+
         if (b.sync_status === 'PENDING_DELETE') {
           const params = new URLSearchParams({
             auth_token: this.authToken!,
@@ -577,7 +577,7 @@ class SyncOrchestrator {
 
         // Respect 5-second delay between write-intensive requests
         await new Promise(resolve => setTimeout(resolve, 5000));
-        
+
       } catch (err) {
         console.error(`[Sync] Failed to push ${b.href}:`, err);
         break;
@@ -627,7 +627,7 @@ const initApp = async () => {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').then(reg => {
         console.log('[SW] Service Worker Registered', reg.scope);
-        
+
         // Quantum Leap: GitHub Pages Header Hack
         // If we are not cross-origin isolated, it means the COOP/COEP headers are missing.
         // Once the Service Worker is active and controlling the page, it will inject them.
@@ -672,15 +672,15 @@ const initApp = async () => {
 
     // Unlock UI if we have a token AND (data exists OR setup ritual complete)
     const isUnlocked = hasToken && (hasData || hasSynced);
-    
+
     toggleAddBtn.style.display = isUnlocked ? 'inline' : 'none';
     searchContainer.style.display = (isUnlocked || hasData) ? 'flex' : 'none';
-    
+
     if (!isUnlocked) {
       addForm.style.display = 'none';
       toggleAddBtn.innerHTML = '+';
     }
-    
+
     // If we have data, we hide the login container (unless token is missing)
     // If we have NO data, we ALWAYS show the sync button to allow re-ingestion
     loginContainer.style.display = hasData && hasToken ? 'none' : 'flex';
@@ -717,7 +717,7 @@ const initApp = async () => {
     try {
       const results = await db.search(query);
       vList.updateItems(results);
-      statusEl.innerHTML = `${results.length} results.`;
+      statusEl.innerHTML = `${results.length}`;
     } catch (e) {
       console.error('Search error:', e);
     }
@@ -818,7 +818,7 @@ const initApp = async () => {
 
       // 2. Refresh UI immediately
       await refreshData();
-      popularTagsCache = []; 
+      popularTagsCache = [];
       await populateTagSuggestions();
 
       // 3. Trigger background sync immediately
@@ -868,7 +868,7 @@ const initApp = async () => {
         sync.startLoop();
 
         await refreshData();
-        popularTagsCache = []; 
+        popularTagsCache = [];
         await populateTagSuggestions();
       } catch (err) {
         console.error('Sync Error:', err);
