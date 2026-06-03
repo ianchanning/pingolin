@@ -112,6 +112,24 @@ class DatabaseBridge {
     });
   }
 
+  async bootstrapSync(proxyUrl: string, authToken: string, onProgress: (data: any) => void) {
+    const id = Math.random().toString(36).substring(7);
+    console.log(`[Bridge] Sending: BOOTSTRAP_SYNC (${id})`);
+    return new Promise((resolve, reject) => {
+      this.pendingRequests.set(id, { resolve, reject, onProgress });
+      this.worker.postMessage({ type: 'BOOTSTRAP_SYNC', payload: { proxyUrl, authToken }, id });
+    });
+  }
+
+  async startHydration(proxyUrl: string, authToken: string, startIndex: number, onProgress: (data: any) => void) {
+    const id = Math.random().toString(36).substring(7);
+    console.log(`[Bridge] Sending: START_HYDRATION (${id}) @ ${startIndex}`);
+    return new Promise((resolve, reject) => {
+      this.pendingRequests.set(id, { resolve, reject, onProgress });
+      this.worker.postMessage({ type: 'START_HYDRATION', payload: { proxyUrl, authToken, startIndex }, id });
+    });
+  }
+
   async send(type: string, payload?: any): Promise<any> {
     const id = Math.random().toString(36).substring(7);
     console.log(`[Bridge] Sending: ${type} (${id})`);
@@ -847,24 +865,39 @@ const initApp = async () => {
       try {
         const proxyUrl = 'https://pinboard-proxy.ian-pinboard-proxy.workers.dev';
 
-        // Initial Full Sync
-        await db.fetchAllFromServer(proxyUrl, token, (progress) => {
+        // PHASE 1: BOOTSTRAP (100 Recent)
+        await db.bootstrapSync(proxyUrl, token, (progress) => {
           statusEl.textContent = progress.status;
         });
 
-        // MANDATORY PATIENCE: After a massive /posts/all, give the server a breather
-        statusEl.textContent = 'Ingestion complete. Resting...';
+        // REFRESH UI IMMEDIATELY
+        await refreshData();
+        statusEl.textContent = 'Bootstrap complete. Hydrating archive in background...';
+
+        // Save token early so background sync can start later
+        await db.setMetadata('auth_token', token);
+        sync.setAuthToken(token);
+
+        // PHASE 2: HYDRATION (The Rest)
+        // We start from 100 because we already got the 100 most recent.
+        // Note: We don't 'await' this if we want it to be truly background, 
+        // but for the 'Initial Sync' button, we probably want to show progress.
+        // However, the spec says 'Background Hydration Loop'.
+        // Let's await it for the Initial Sync experience so the user knows it's working.
+        await db.startHydration(proxyUrl, token, 100, (progress) => {
+          statusEl.textContent = progress.status;
+        });
+
+        // MANDATORY PATIENCE: After a massive sync, give the server a breather
+        statusEl.textContent = 'Sync complete. Finalizing...';
         await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // Save token and start background sync
-        await db.setMetadata('auth_token', token);
         const serverUpdate = await fetch(`${proxyUrl}/posts/update?auth_token=${token}&format=json`, { cache: 'no-store' })
           .then(r => r.json())
           .then(d => d.update_time);
         await db.setMetadata('last_server_update_time', serverUpdate);
         await db.setMetadata('last_full_sync_time', new Date().toISOString());
 
-        sync.setAuthToken(token);
         sync.startLoop();
 
         await refreshData();

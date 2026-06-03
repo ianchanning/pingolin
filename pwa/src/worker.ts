@@ -474,6 +474,16 @@ self.onmessage = async (e) => {
         await fetchAllFromServer(payload.proxyUrl, payload.authToken, id);
         break;
 
+      case 'BOOTSTRAP_SYNC':
+        // Payload is { proxyUrl, authToken }
+        await bootstrapSync(payload.proxyUrl, payload.authToken, id);
+        break;
+
+      case 'START_HYDRATION':
+        // Payload is { proxyUrl, authToken, startIndex }
+        await hydrateArchive(payload.proxyUrl, payload.authToken, payload.startIndex || 0, id);
+        break;
+
       default:
         console.warn('Unknown message type:', type);
     }
@@ -483,6 +493,157 @@ self.onmessage = async (e) => {
       payload: (error as Error).message,
       id
     });
+  }
+};
+
+const hydrateArchive = async (proxyUrl: string, authToken: string, startIndex: number, id: string) => {
+  const PAGE_SIZE = 100;
+  let offset = startIndex;
+  let hasMore = true;
+  let consecutiveErrors = 0;
+
+  try {
+    // 1. Get total count estimate from /posts/dates if possible, or just use a large number for progress
+    // For now, we'll just report progress based on records fetched.
+    
+    while (hasMore) {
+      self.postMessage({ 
+        type: 'SYNC_PROGRESS', 
+        payload: { status: `HYDRATION: Fetching records ${offset} to ${offset + PAGE_SIZE}...` }, 
+        id 
+      });
+
+      const url = `${proxyUrl}/posts/all?auth_token=${authToken}&start=${offset}&results=${PAGE_SIZE}&format=json`;
+      
+      let response;
+      try {
+        response = await fetch(url);
+      } catch (fetchErr) {
+        console.error('[Worker] Fetch error during hydration:', fetchErr);
+        consecutiveErrors++;
+        if (consecutiveErrors > 3) throw new Error('Too many network failures during hydration.');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        continue;
+      }
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          const backoff = 60000 * Math.pow(2, consecutiveErrors);
+          self.postMessage({ 
+            type: 'SYNC_PROGRESS', 
+            payload: { status: `RATE LIMITED (429): Backing off for ${backoff/1000}s...` }, 
+            id 
+          });
+          await new Promise(resolve => setTimeout(resolve, backoff));
+          consecutiveErrors++;
+          continue;
+        }
+        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+      }
+
+      consecutiveErrors = 0;
+      const bookmarks = await response.json();
+
+      if (!bookmarks || bookmarks.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      self.postMessage({ 
+        type: 'SYNC_PROGRESS', 
+        payload: { status: `HYDRATION: Ingesting ${bookmarks.length} records...` }, 
+        id 
+      });
+
+      db.transaction((db: any) => {
+        const stmt = db.prepare(`
+          INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
+          VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?)
+          ON CONFLICT(href) DO UPDATE SET
+            description=excluded.description,
+            extended=excluded.extended,
+            tags=excluded.tags,
+            time=excluded.time,
+            local_last_modified=excluded.local_last_modified
+        `);
+        for (const b of bookmarks) {
+          stmt.bind([b.href, b.description, b.extended, b.tags, b.time, Date.now()]);
+          stmt.step();
+          stmt.reset();
+        }
+        stmt.finalize();
+      });
+
+      offset += bookmarks.length;
+
+      // Track Progress (if we had a total, we'd use it here)
+      self.postMessage({
+        type: 'SYNC_PROGRESS',
+        payload: {
+          status: `HYDRATION: Ingested total ${offset} records.`,
+          progress: -1 // Indeterminate progress until we have total
+        },
+        id
+      });
+
+      if (bookmarks.length < PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        // Phase 4.1: Mandatory Throttling Delay (1 second)
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    self.postMessage({ type: 'SYNC_COMPLETE', payload: { count: offset }, id });
+
+  } catch (error) {
+    throw error;
+  }
+};
+
+const bootstrapSync = async (proxyUrl: string, authToken: string, id: string) => {
+  try {
+    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'BOOTSTRAP: Fetching recent bookmarks...' }, id });
+
+    // Pinboard /posts/recent returns the most recent 100 bookmarks by default (max 100)
+    const url = `${proxyUrl}/posts/recent?auth_token=${authToken}&count=100&format=json`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error('Pinboard API Rate Limit (429). Please wait 5 minutes.');
+      }
+      throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const bookmarks = data.posts || [];
+
+    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: `BOOTSTRAP: Ingesting ${bookmarks.length} records...` }, id });
+
+    db.transaction((db: any) => {
+      const stmt = db.prepare(`
+        INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
+        VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?)
+        ON CONFLICT(href) DO UPDATE SET
+          description=excluded.description,
+          extended=excluded.extended,
+          tags=excluded.tags,
+          time=excluded.time,
+          local_last_modified=excluded.local_last_modified
+      `);
+      for (const b of bookmarks) {
+        stmt.bind([b.href, b.description, b.extended, b.tags, b.time, Date.now()]);
+        stmt.step();
+        stmt.reset();
+      }
+      stmt.finalize();
+    });
+
+    self.postMessage({ type: 'BOOTSTRAP_COMPLETE', payload: { count: bookmarks.length }, id });
+
+  } catch (error) {
+    throw error;
   }
 };
 
