@@ -23,6 +23,13 @@
 - [x] Add basic authentication UI (token input) to trigger initial sync.
 - [x] Verify ingestion and local storage persistence (verified via data re-load on refresh).
 
+## Phase 2a: Initial Ingestion (Sync V2: Bootstrap & Hydrate) - COMPLETED & OPTIMIZED
+- [x] Implement **Bootstrap Sync**: Fetch 100 most recent bookmarks via `/posts/recent` for immediate UI rendering.
+- [x] Implement **Background Hydration Loop**: Paginated archive crawl (1000 records/batch) with 1s throttling.
+- [x] Implement **Rate-Limit Backoff (429)**: Automatic pausing and exponential backoff on server pressure.
+- [x] Store the `last_full_sync_time` as a handshake sentinel to unlock UI.
+- [x] Verify FTS5 search performance on the full 22,000 records (<50ms target).
+
 ## Phase 3: The "Brutal" UI (Search & List) - COMPLETED
 - [x] Implement **Virtualized Scrolling** to handle 22,000+ records with 60fps performance.
 - [x] Build real-time search interface with 50ms debounced FTS5 queries.
@@ -47,7 +54,11 @@
 
 ## Phase 6: PWA Hardening - COMPLETED
 - [x] Implement **Service Worker** for offline asset caching (fortress is immortal).
-- [x] Implement **Heuristic Tagging Engine** with domain and keyword rules.
+- [x] Implement **Heuristic Tagging Engine**:
+    - [x] History-based Co-occurrence logic (suggest tags from similar titles).
+    - [x] Real-time UI integration for tag suggestions.
+    - [ ] Local keyword -> Tag mapping via `tag_aliases` (Relational store ready).
+    - [ ] Domain-based tagging logic (Ready for future expansion).
 - [x] Implement **Tag Rename Workaround** (`sync.renameTag(old, new)`) to bypass legacy API bugs.
 - [x] Final 30Y durability check: 0 external dependencies (vendored SQLite).
 

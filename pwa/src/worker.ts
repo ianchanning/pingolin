@@ -335,7 +335,7 @@ self.onmessage = async (e) => {
 
         const sortedTags = Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
-          .slice(0, 100)
+          .slice(0, 200)
           .map(e => e[0]);
 
         self.postMessage({ type: 'QUERY_RESULTS', payload: sortedTags, id });
@@ -497,7 +497,7 @@ self.onmessage = async (e) => {
 };
 
 const hydrateArchive = async (proxyUrl: string, authToken: string, startIndex: number, id: string) => {
-  const PAGE_SIZE = 100;
+  const PAGE_SIZE = 1000;
   let offset = startIndex;
   let hasMore = true;
   let consecutiveErrors = 0;
@@ -505,16 +505,16 @@ const hydrateArchive = async (proxyUrl: string, authToken: string, startIndex: n
   try {
     // 1. Get total count estimate from /posts/dates if possible, or just use a large number for progress
     // For now, we'll just report progress based on records fetched.
-    
+
     while (hasMore) {
-      self.postMessage({ 
-        type: 'SYNC_PROGRESS', 
-        payload: { status: `HYDRATION: Fetching records ${offset} to ${offset + PAGE_SIZE}...` }, 
-        id 
+      self.postMessage({
+        type: 'SYNC_PROGRESS',
+        payload: { status: `HYDRATION: Fetching records ${offset} to ${offset + PAGE_SIZE}...` },
+        id
       });
 
       const url = `${proxyUrl}/posts/all?auth_token=${authToken}&start=${offset}&results=${PAGE_SIZE}&format=json`;
-      
+
       let response;
       try {
         response = await fetch(url);
@@ -529,10 +529,10 @@ const hydrateArchive = async (proxyUrl: string, authToken: string, startIndex: n
       if (!response.ok) {
         if (response.status === 429) {
           const backoff = 60000 * Math.pow(2, consecutiveErrors);
-          self.postMessage({ 
-            type: 'SYNC_PROGRESS', 
-            payload: { status: `RATE LIMITED (429): Backing off for ${backoff/1000}s...` }, 
-            id 
+          self.postMessage({
+            type: 'SYNC_PROGRESS',
+            payload: { status: `RATE LIMITED (429): Backing off for ${backoff / 1000}s...` },
+            id
           });
           await new Promise(resolve => setTimeout(resolve, backoff));
           consecutiveErrors++;
@@ -549,10 +549,10 @@ const hydrateArchive = async (proxyUrl: string, authToken: string, startIndex: n
         break;
       }
 
-      self.postMessage({ 
-        type: 'SYNC_PROGRESS', 
-        payload: { status: `HYDRATION: Ingesting ${bookmarks.length} records...` }, 
-        id 
+      self.postMessage({
+        type: 'SYNC_PROGRESS',
+        payload: { status: `HYDRATION: Ingesting ${bookmarks.length} records...` },
+        id
       });
 
       db.transaction((db: any) => {

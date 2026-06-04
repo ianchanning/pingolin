@@ -60,7 +60,7 @@ export default {
       requestBody = request.body;
     }
 
-    // 5. Execute proxy call
+    // 5. Execute proxy call with zero caching to ensure fresh data for the fortress
     try {
       console.log(`[Proxy] Fetching: ${pinboardUrl.toString()}`);
       const response = await fetch(pinboardUrl.toString(), {
@@ -68,6 +68,8 @@ export default {
         headers: headers,
         body: requestBody,
         redirect: "follow",
+        // @ts-ignore - Cloudflare specific property
+        cf: { cacheTtl: 0 }
       });
 
       console.log(`[Proxy] Upstream Response: ${response.status} ${response.statusText}`);

@@ -130,6 +130,10 @@ class DatabaseBridge {
     });
   }
 
+  async suggestTags(query: string): Promise<string[]> {
+    return this.send('SUGGEST_TAGS_HISTORY', query);
+  }
+
   async send(type: string, payload?: any): Promise<any> {
     const id = Math.random().toString(36).substring(7);
     console.log(`[Bridge] Sending: ${type} (${id})`);
@@ -295,6 +299,10 @@ class SyncOrchestrator {
     this.isSyncing = true;
     this.needsSync = false;
     this.syncIndicator.style.display = 'block';
+    
+    const statusEl = document.getElementById('status');
+    const originalStatus = statusEl ? statusEl.innerHTML : '';
+    if (statusEl) statusEl.textContent = 'Syncing...';
 
     try {
       console.log('[Sync] Starting Precision Sync Loop (The Dates Hack)...');
@@ -332,12 +340,15 @@ class SyncOrchestrator {
       }
 
       // Path B: The Dates Hack (Deletions)
-      // We run this if the timestamp changed OR if we haven't successfully run it yet this session
+      // We run this if the timestamp changed OR if we haven't successfully run it in the last hour
       let sentinelSuccess = true;
-      if (forceSentinel || !hasRunSentinelThisSession) {
+      const now = Date.now();
+      const oneHour = 1000 * 60 * 60;
+      
+      if (forceSentinel || (now - lastSentinelRunTime > oneHour)) {
         sentinelSuccess = await this.runDatesSentinel();
         if (sentinelSuccess) {
-          hasRunSentinelThisSession = true;
+          lastSentinelRunTime = now;
           console.log('[Sync] Sentinel session ritual complete.');
         }
       } else {
@@ -347,7 +358,9 @@ class SyncOrchestrator {
       // 3. Update sync state ONLY if everything succeeded
       if (sentinelSuccess) {
         await db.setMetadata('last_server_update_time', serverUpdate);
-        await db.setMetadata('last_full_sync_time', new Date().toISOString());
+        // CRITICAL: Use serverUpdate as the watermark for delta sync, NOT local time.
+        // This prevents clock-skew issues and gaps between hydration and the first loop.
+        await db.setMetadata('last_full_sync_time', serverUpdate);
         console.log('[Sync] Handshake successfully recorded.');
       } else {
         console.warn('[Sync] Sync state NOT updated due to sentinel failure.');
@@ -360,6 +373,11 @@ class SyncOrchestrator {
       const pending = await db.getPending();
       if (!pending || pending.length === 0) {
         this.syncIndicator.style.display = 'none';
+      }
+
+      // Quantum Leap: Ensure UI reflects the final state and clears any "Ingesting..." noise
+      if ((window as any).refreshApp) {
+        await (window as any).refreshApp();
       }
 
       // If a new change happened while we were syncing, run again immediately
@@ -388,7 +406,17 @@ class SyncOrchestrator {
       }
       await this.wait(5000);
     } else {
-      await db.fetchAllFromServer(this.proxyUrl, this.authToken!, (p) => console.log(p.status));
+      console.log('[Sync] No previous sync found. Performing bootstrap + hydration...');
+      await db.bootstrapSync(this.proxyUrl, this.authToken!, (p) => {
+        const statusEl = document.getElementById('status');
+        if (statusEl) statusEl.textContent = p.status;
+      });
+      if ((window as any).refreshApp) await (window as any).refreshApp();
+      
+      await db.startHydration(this.proxyUrl, this.authToken!, 100, (p) => {
+        const statusEl = document.getElementById('status');
+        if (statusEl) statusEl.textContent = p.status;
+      });
       await this.wait(5000);
     }
   }
@@ -620,7 +648,7 @@ const db = new DatabaseBridge();
 const sync = new SyncOrchestrator('sync-indicator');
 (window as any).sync = sync;
 
-let hasRunSentinelThisSession = false;
+let lastSentinelRunTime = 0;
 
 let popularTagsCache: string[] = [];
 
@@ -701,7 +729,9 @@ const initApp = async () => {
 
     // If we have data, we hide the login container (unless token is missing)
     // If we have NO data, we ALWAYS show the sync button to allow re-ingestion
-    loginContainer.style.display = hasData && hasToken ? 'none' : 'flex';
+    // BUT: If we are currently syncing, hide it to avoid double-triggers
+    const isSyncing = (sync as any).isSyncing;
+    loginContainer.style.display = (hasData && hasToken) || isSyncing ? 'none' : 'flex';
 
     if (hasData) {
       statusEl.innerHTML = `${existing.length} ${!hasToken ? '<span class="token-error">(Sync Disabled: No Key)</span>' : ''}`;
@@ -809,6 +839,33 @@ const initApp = async () => {
       populateTagSuggestions(newTagsInput.value);
     };
 
+    const updateTagSuggestions = async () => {
+      const title = newTitleInput.value.trim();
+      if (title.length < 3) return;
+      
+      try {
+        const historyTags = await db.suggestTags(title);
+        if (historyTags.length > 0) {
+          // Merge history tags with popular tags, putting history first
+          const merged = [...new Set([...historyTags, ...popularTagsCache])].slice(0, 100);
+          const datalist = document.getElementById('tag-suggestions')!;
+          const inputVal = newTagsInput.value;
+          const lastSpaceIndex = inputVal.lastIndexOf(' ');
+          const prefix = lastSpaceIndex === -1 ? '' : inputVal.substring(0, lastSpaceIndex + 1);
+          datalist.innerHTML = merged.map(t => `<option value="${prefix}${t}">`).join('');
+        }
+      } catch (e) {
+        console.warn('[UI] Tag suggestion failed:', e);
+      }
+    };
+
+    newTitleInput.onblur = updateTagSuggestions;
+    newTitleInput.oninput = () => {
+      // Debounce suggestions
+      clearTimeout((window as any).suggestionTimeout);
+      (window as any).suggestionTimeout = setTimeout(updateTagSuggestions, 500);
+    };
+
     resetButton.onclick = async () => {
       if (confirm('DEEP RESET: Wipe database and credentials?')) {
         await db.debugClearDb();
@@ -880,10 +937,6 @@ const initApp = async () => {
 
         // PHASE 2: HYDRATION (The Rest)
         // We start from 100 because we already got the 100 most recent.
-        // Note: We don't 'await' this if we want it to be truly background, 
-        // but for the 'Initial Sync' button, we probably want to show progress.
-        // However, the spec says 'Background Hydration Loop'.
-        // Let's await it for the Initial Sync experience so the user knows it's working.
         await db.startHydration(proxyUrl, token, 100, (progress) => {
           statusEl.textContent = progress.status;
         });
@@ -892,11 +945,10 @@ const initApp = async () => {
         statusEl.textContent = 'Sync complete. Finalizing...';
         await new Promise(resolve => setTimeout(resolve, 5000));
 
-        const serverUpdate = await fetch(`${proxyUrl}/posts/update?auth_token=${token}&format=json`, { cache: 'no-store' })
-          .then(r => r.json())
-          .then(d => d.update_time);
-        await db.setMetadata('last_server_update_time', serverUpdate);
-        await db.setMetadata('last_full_sync_time', new Date().toISOString());
+        // Quantum Leap: We no longer set 'last_server_update_time' or 'last_full_sync_time' here.
+        // By leaving them empty, the first run of startLoop() will see 'undefined' vs 'serverUpdate'
+        // and force a fetchServerAdditions() followed by a Dates Sentinel run.
+        // This is the ONLY way to guarantee we didn't miss a bookmark added during the hydration.
 
         sync.startLoop();
 
