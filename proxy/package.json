@@ -1,5 +1,5 @@
 {
-  "name": "pinboard-proxy",
+  "name": "pingolin-proxy",
   "version": "1.0.0",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240529.0",

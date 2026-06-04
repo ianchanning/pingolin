@@ -1,0 +1,8 @@
+{
+  "name": "pingolin",
+  "private": true,
+  "workspaces": [
+    "proxy",
+    "pwa"
+  ]
+}

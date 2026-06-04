@@ -1,1 +1,11 @@
+node_modules/
+dist/
+.env
+.wrangler/
 proxy/.wrangler/
+pwa/node_modules/
+pwa/dist/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
