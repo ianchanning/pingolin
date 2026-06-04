@@ -97,6 +97,9 @@ class DatabaseBridge {
 
   async debugClearDb() {
     console.log('[Bridge] Requesting Clear DB');
+    if ((window as any).sync) {
+      (window as any).sync.reset();
+    }
     await this.send('DEBUG_CLEAR_DB');
     if (typeof window !== 'undefined' && (window as any).refreshApp) {
       await (window as any).refreshApp();
@@ -247,11 +250,12 @@ class VirtualizedList {
 }
 
 class SyncOrchestrator {
-  private isSyncing = false;
+  public isSyncing = false;
   private needsSync = false;
   private proxyUrl = 'https://pinboard-proxy.ian-pinboard-proxy.workers.dev';
   private authToken: string | null = null;
   private syncIndicator: HTMLElement;
+  private timerHandle: any = null;
 
   constructor(syncIndicatorId: string) {
     this.syncIndicator = document.getElementById(syncIndicatorId)!;
@@ -259,6 +263,18 @@ class SyncOrchestrator {
 
   setAuthToken(token: string) {
     this.authToken = token;
+  }
+
+  reset() {
+    console.log('[Sync] Resetting orchestrator state.');
+    this.isSyncing = false;
+    this.needsSync = false;
+    this.authToken = null;
+    if (this.timerHandle) {
+      clearTimeout(this.timerHandle);
+      this.timerHandle = null;
+    }
+    this.syncIndicator.style.display = 'none';
   }
 
   setBusy(busy: boolean) {
@@ -385,7 +401,7 @@ class SyncOrchestrator {
         this.startLoop();
       } else {
         // Schedule next run in 1 minute
-        setTimeout(() => this.startLoop(), 60000);
+        this.timerHandle = setTimeout(() => this.startLoop(), 60000);
       }
     }
   }
@@ -730,8 +746,7 @@ const initApp = async () => {
     // If we have data, we hide the login container (unless token is missing)
     // If we have NO data, we ALWAYS show the sync button to allow re-ingestion
     // BUT: If we are currently syncing, hide it to avoid double-triggers
-    const isSyncing = (sync as any).isSyncing;
-    loginContainer.style.display = (hasData && hasToken) || isSyncing ? 'none' : 'flex';
+    loginContainer.style.display = (hasData && hasToken) || sync.isSyncing ? 'none' : 'flex';
 
     if (hasData) {
       statusEl.innerHTML = `${existing.length} ${!hasToken ? '<span class="token-error">(Sync Disabled: No Key)</span>' : ''}`;
