@@ -106,30 +106,12 @@ class DatabaseBridge {
     }
   }
 
-  async fetchAllFromServer(proxyUrl: string, authToken: string, onProgress: (data: any) => void) {
+  async startHydration(proxyUrl: string, authToken: string, onProgress: (data: any) => void) {
     const id = Math.random().toString(36).substring(7);
-    console.log(`[Bridge] Sending: FETCH_ALL_SERVER (${id})`);
+    console.log(`[Bridge] Sending: START_HYDRATION (${id})`);
     return new Promise((resolve, reject) => {
       this.pendingRequests.set(id, { resolve, reject, onProgress });
-      this.worker.postMessage({ type: 'FETCH_ALL_SERVER', payload: { proxyUrl, authToken }, id });
-    });
-  }
-
-  async bootstrapSync(proxyUrl: string, authToken: string, onProgress: (data: any) => void) {
-    const id = Math.random().toString(36).substring(7);
-    console.log(`[Bridge] Sending: BOOTSTRAP_SYNC (${id})`);
-    return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject, onProgress });
-      this.worker.postMessage({ type: 'BOOTSTRAP_SYNC', payload: { proxyUrl, authToken }, id });
-    });
-  }
-
-  async startHydration(proxyUrl: string, authToken: string, startIndex: number, onProgress: (data: any) => void) {
-    const id = Math.random().toString(36).substring(7);
-    console.log(`[Bridge] Sending: START_HYDRATION (${id}) @ ${startIndex}`);
-    return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject, onProgress });
-      this.worker.postMessage({ type: 'START_HYDRATION', payload: { proxyUrl, authToken, startIndex }, id });
+      this.worker.postMessage({ type: 'START_HYDRATION', payload: { proxyUrl, authToken }, id });
     });
   }
 
@@ -422,14 +404,8 @@ class SyncOrchestrator {
       }
       await this.wait(5000);
     } else {
-      console.log('[Sync] No previous sync found. Performing bootstrap + hydration...');
-      await db.bootstrapSync(this.proxyUrl, this.authToken!, (p) => {
-        const statusEl = document.getElementById('status');
-        if (statusEl) statusEl.textContent = p.status;
-      });
-      if ((window as any).refreshApp) await (window as any).refreshApp();
-      
-      await db.startHydration(this.proxyUrl, this.authToken!, 100, (p) => {
+      console.log('[Sync] No previous sync found. Performing full hydration...');
+      await db.startHydration(this.proxyUrl, this.authToken!, (p) => {
         const statusEl = document.getElementById('status');
         if (statusEl) statusEl.textContent = p.status;
       });
@@ -937,33 +913,18 @@ const initApp = async () => {
       try {
         const proxyUrl = 'https://pinboard-proxy.ian-pinboard-proxy.workers.dev';
 
-        // PHASE 1: BOOTSTRAP (100 Recent)
-        await db.bootstrapSync(proxyUrl, token, (progress) => {
-          statusEl.textContent = progress.status;
-        });
-
-        // REFRESH UI IMMEDIATELY
-        await refreshData();
-        statusEl.textContent = 'Bootstrap complete. Hydrating archive in background...';
-
-        // Save token early so background sync can start later
+        // Save token early
         await db.setMetadata('auth_token', token);
         sync.setAuthToken(token);
 
-        // PHASE 2: HYDRATION (The Rest)
-        // We start from 100 because we already got the 100 most recent.
-        await db.startHydration(proxyUrl, token, 100, (progress) => {
+        // PERFORM FULL SYNC (The Big Pull)
+        await db.startHydration(proxyUrl, token, (progress) => {
           statusEl.textContent = progress.status;
         });
 
         // MANDATORY PATIENCE: After a massive sync, give the server a breather
         statusEl.textContent = 'Sync complete. Finalizing...';
         await new Promise(resolve => setTimeout(resolve, 5000));
-
-        // Quantum Leap: We no longer set 'last_server_update_time' or 'last_full_sync_time' here.
-        // By leaving them empty, the first run of startLoop() will see 'undefined' vs 'serverUpdate'
-        // and force a fetchServerAdditions() followed by a Dates Sentinel run.
-        // This is the ONLY way to guarantee we didn't miss a bookmark added during the hydration.
 
         sync.startLoop();
 
