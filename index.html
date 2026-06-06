@@ -8,7 +8,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
     <link rel="manifest" href="/site.webmanifest">
-  <script type="module" crossorigin src="/assets/index-BiPw8LK8.js"></script>
+  <script type="module" crossorigin src="/assets/index-DWi5rrlw.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-B77NU3y7.css">
 </head>
 <body>
@@ -18,28 +18,28 @@
               <p>&nbsp;</p>
               <h1><img id="logo" src="/favicon-32x32.png" /> pingolin <a id="toggle-add-btn" href="#" style="text-decoration: none; color: inherit; display: none; font-size: 0.8em; vertical-align: middle;">+</a></h1>
             </div>
-            <div id="add-form" style="display: none;">
-                <input type="text" id="new-url" placeholder="https://...">
-                <input type="text" id="new-title" placeholder="Title">
-                <input type="text" id="new-tags" placeholder="Tags (space separated)" list="tag-suggestions">
+            <div id="add-form" style="display: none;" data-testid="add-form">
+                <input type="text" id="new-url" placeholder="https://..." data-testid="new-url">
+                <input type="text" id="new-title" placeholder="Title" data-testid="new-title">
+                <input type="text" id="new-tags" placeholder="Tags (space separated)" list="tag-suggestions" data-testid="new-tags">
                 <datalist id="tag-suggestions"></datalist>
-                <button id="add-button">Add</button>
+                <button id="add-button" data-testid="add-button">Add</button>
             </div>
             <div id="indicators">
-                <div id="status">Initializing...</div>
-                <span id="offline-indicator" class="indicator">OFFLINE</span>
-                <span id="sync-indicator" class="indicator">SYNCING</span>
+                <div id="status" data-testid="sync-progress">Initializing...</div>
+                <span id="offline-indicator" class="indicator" data-testid="network-status">OFFLINE</span>
+                <span id="sync-indicator" class="indicator" data-testid="sync-status">SYNCING</span>
             </div>
         </header>
         <main>
-            <div id="login-container" style="display: none;">
-                <input type="password" id="auth-token" placeholder="username:TOKEN">
-                <button id="sync-button">Sync</button>
+            <div id="login-container" style="display: none;" data-testid="login-container">
+                <input type="password" id="auth-token" placeholder="username:TOKEN" data-testid="auth-token">
+                <button id="sync-button" data-testid="sync-button">Sync</button>
                 <button id="reset-button">Reset</button>
             </div>
             <div id="search-container" style="display: none;">
                 <div id="search-form">
-                    <input type="text" id="search" placeholder="Search...">
+                    <input type="text" id="search" placeholder="Search..." data-testid="search-input">
                 </div>
                 <div id="viewport">
                     <div id="canvas">

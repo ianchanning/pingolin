@@ -52,11 +52,11 @@ CREATE TRIGGER IF NOT EXISTS bookmarks_au AFTER UPDATE ON bookmarks BEGIN
   INSERT INTO bookmarks_fts(rowid, href, description, extended, tags)
   VALUES (new.rowid, new.href, new.description, new.extended, new.tags);
 END;
-`,i=async()=>{try{let e=await t({print:console.debug,printErr:console.error,locateFile:e=>`/vendor/${e}`}),i=(...e)=>console.debug(...e);return e.config.print=i,e.config.printErr=console.error,e.capi&&(e.capi.print=i),console.log(`Running SQLite3 version`,e.version.libVersion),`opfs`in e?(n=new e.oo1.OpfsDb(`/pinboard.db`),console.log(`SQLite is using OPFS storage.`)):(n=new e.oo1.DB(`/pinboard.db`,`ct`),console.warn(`OPFS not available, falling back to transient storage.`)),e.capi&&typeof e.capi.sqlite3_trace_v2==`function`&&e.capi.sqlite3_trace_v2(n.pointer,0,0,0),n.exec(r),n.exec(`
+`,i=async(e=`/pinboard.db`)=>{try{let i=await t({print:console.debug,printErr:console.error,locateFile:e=>`/vendor/${e}`}),a=(...e)=>console.debug(...e);return i.config.print=a,i.config.printErr=console.error,i.capi&&(i.capi.print=a),console.log(`Running SQLite3 version`,i.version.libVersion),`opfs`in i?(n=new i.oo1.OpfsDb(e),console.log(`SQLite is using OPFS storage: ${e}`)):(n=new i.oo1.DB(e,`ct`),console.warn(`OPFS not available, falling back to transient storage: ${e}`)),i.capi&&typeof i.capi.sqlite3_trace_v2==`function`&&i.capi.sqlite3_trace_v2(n.pointer,0,0,0),n.exec(r),n.exec(`
       PRAGMA journal_mode=WAL;
       PRAGMA synchronous=NORMAL;
       PRAGMA cache_size=-64000; -- 64MB cache
-    `),console.log(`Database schema initialized and optimized.`),!0}catch(e){throw console.error(`Failed to initialize SQLite:`,e),e}};self.onmessage=async e=>{let{type:t,payload:o,id:s}=e.data;console.log(`[Worker] Received: ${t} (${s})`);try{switch(t){case`INIT`:await i(),self.postMessage({type:`INIT_SUCCESS`,id:s});break;case`QUERY_SEARCH`:{let e=``,t=[];if(o.startsWith(`#`)){let n=o.substring(1);e=`
+    `),console.log(`Database schema initialized and optimized.`),!0}catch(e){throw console.error(`Failed to initialize SQLite:`,e),e}};self.onmessage=async e=>{let{type:t,payload:o,id:s}=e.data;console.log(`[Worker] Received: ${t} (${s})`);try{switch(t){case`INIT`:await i(o?.dbName),self.postMessage({type:`INIT_SUCCESS`,id:s});break;case`QUERY_SEARCH`:{let e=``,t=[];if(o.startsWith(`#`)){let n=o.substring(1);e=`
             SELECT * FROM bookmarks 
             WHERE (' ' || tags || ' ') LIKE ?
             ORDER BY time DESC
@@ -100,4 +100,4 @@ END;
             tags=excluded.tags,
             time=excluded.time,
             local_last_modified=excluded.local_last_modified
-        `);for(let e of t)n.bind([e.href,e.description,e.extended,e.tags,e.time,Date.now()]),n.step(),n.reset();n.finalize()}),self.postMessage({type:`SYNC_PROGRESS`,payload:{status:`LOCAL: Ingested ${Math.min(e+s,o.length)} / ${o.length}`,progress:(e+s)/o.length},id:r}),await new Promise(e=>setTimeout(e,0))}self.postMessage({type:`SYNC_COMPLETE`,payload:{count:o.length},id:r})}catch(e){throw e}}})();
+        `);for(let e of t)n.bind([e.href,e.description,e.extended,e.tags,e.time,Date.now()]),n.step(),n.reset();n.finalize()}),self.postMessage({type:`SYNC_PROGRESS`,payload:{status:`LOCAL: Ingested ${Math.min(e+s,o.length)} / ${o.length}`,progress:(e+s)/o.length},id:r}),await new Promise(e=>setTimeout(e,0))}n.exec({sql:`INSERT INTO metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,bind:[`last_full_sync_time`,new Date().toISOString()]}),self.postMessage({type:`SYNC_COMPLETE`,payload:{count:o.length},id:r})}catch(e){throw e}}})();
