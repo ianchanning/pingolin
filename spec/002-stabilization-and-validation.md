@@ -39,6 +39,7 @@ Refine the current prototype into a "Golden Master" state. Fix lingering UI/Sync
 ## 5. Validation: The Universal Fortress (Playwright)
 **Problem:** We need a way to verify the application's behavior that survives a complete rewrite in PureScript/ClojureScript.
 **Plan:**
+- See **[SPEC-004: The Universal Testing Fortress](./004-testing-scenarios.md)** for detailed rituals.
 - Initialize Playwright in the `pwa/` directory.
 - Implement **Page Object Model (POM)** for the main interface (Search, Add Form, List).
 - **Mock Strategy:**
@@ -48,10 +49,6 @@ Refine the current prototype into a "Golden Master" state. Fix lingering UI/Sync
     - `/posts/all` (ingestion/deltas)
     - `/posts/dates` (the Dates Hack)
     - `/posts/add` / `/posts/delete` (write-back)
-- **Key Test Rituals:**
-  - "Initial Sync Ritual": Verify 0 to 22k ingestion flow.
-  - "The Deletion Exorcism": Mock a date-count mismatch and verify the local record is pruned.
-  - "Offline Resilience": Verify search and local-add work while `page.setOffline(true)`.
 
 ---
 

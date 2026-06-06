@@ -39,8 +39,8 @@ class DatabaseBridge {
     };
   }
 
-  async init() {
-    return this.send('INIT');
+  async init(dbName?: string) {
+    return this.send('INIT', { dbName });
   }
 
   async search(query: string) {
@@ -183,6 +183,7 @@ class VirtualizedList {
 
       const li = document.createElement('li');
       li.className = 'bookmark';
+      li.setAttribute('data-testid', 'bookmark-item');
       li.style.transform = `translateY(${i * this.itemHeight}px)`;
       li.style.willChange = 'transform';
 
@@ -193,7 +194,7 @@ class VirtualizedList {
       li.innerHTML = `
         <div>
           <h3>
-            ${b.sync_status !== 'SYNCHRONIZED' ? ' 🔄' : ''}
+            ${b.sync_status !== 'SYNCHRONIZED' ? '<span data-testid="pending-icon">🔄</span>' : ''}
             <a href="${b.href}" target="_blank">${b.description}</a>
           </h3>
           ${tagsHtml ? `<div class="tags">Tags: ${tagsHtml}</div>` : ''}
@@ -287,12 +288,14 @@ class SyncOrchestrator {
   async startLoop() {
     if (this.isSyncing || !this.authToken) return;
 
-    // 0. Sanity Check: If DB is empty, abort.
-    const count = await db.getBookmarkCount();
-    if (count === 0) {
-      console.warn('[Sync] Loop aborted: Local database is empty. Please perform an Initial Sync.');
+    // 0. Sanity Check: If no sync has ever been attempted, abort.
+    const hasSynced = !!(await db.getMetadata('last_full_sync_time'))?.value;
+    if (!hasSynced) {
+      console.warn('[Sync] Loop aborted: No previous sync found. Please perform an Initial Sync.');
       return;
     }
+
+    const count = await db.getBookmarkCount();
 
     this.isSyncing = true;
     this.needsSync = false;
@@ -778,7 +781,8 @@ const initApp = async () => {
 
   console.log('Initializing Pinboard PWA...');
   try {
-    await db.init();
+    const dbName = new URLSearchParams(window.location.search).get('dbName') || undefined;
+    await db.init(dbName ? `/${dbName}` : undefined);
     console.log('Database Ready.');
     await populateTagSuggestions();
 
@@ -797,7 +801,14 @@ const initApp = async () => {
       sync.startLoop();
     }
 
-    (window as any).refreshApp = refreshData;
+    (window as any).refreshApp = async () => {
+      const query = searchInput.value.trim();
+      if (query) {
+        await performSearch(query, false);
+      } else {
+        await refreshData();
+      }
+    };
 
     (window as any).deleteBookmark = async (href: string) => {
       await db.localDelete(href);

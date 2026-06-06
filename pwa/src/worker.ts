@@ -60,7 +60,7 @@ CREATE TRIGGER IF NOT EXISTS bookmarks_au AFTER UPDATE ON bookmarks BEGIN
 END;
 `;
 
-const initDb = async () => {
+const initDb = async (dbName: string = '/pinboard.db') => {
   try {
     const sqlite3 = await sqlite3InitModule({
       print: console.debug,
@@ -83,11 +83,11 @@ const initDb = async () => {
     console.log('Running SQLite3 version', sqlite3.version.libVersion);
 
     if ('opfs' in sqlite3) {
-      db = new sqlite3.oo1.OpfsDb('/pinboard.db');
-      console.log('SQLite is using OPFS storage.');
+      db = new sqlite3.oo1.OpfsDb(dbName);
+      console.log(`SQLite is using OPFS storage: ${dbName}`);
     } else {
-      db = new sqlite3.oo1.DB('/pinboard.db', 'ct');
-      console.warn('OPFS not available, falling back to transient storage.');
+      db = new sqlite3.oo1.DB(dbName, 'ct');
+      console.warn(`OPFS not available, falling back to transient storage: ${dbName}`);
     }
 
     // --- FIX 2: Manually clear the native engine C-level tracing hooks if active ---
@@ -124,7 +124,7 @@ self.onmessage = async (e) => {
   try {
     switch (type) {
       case 'INIT':
-        await initDb();
+        await initDb(payload?.dbName);
         self.postMessage({ type: 'INIT_SUCCESS', id });
         break;
 
@@ -541,6 +541,12 @@ const hydrateArchive = async (proxyUrl: string, authToken: string, id: string) =
       // Micro-yield to allow the worker event loop to process messages
       await new Promise(resolve => setTimeout(resolve, 0));
     }
+
+    // Set the handshake sentinel to unlock the UI
+    db.exec({
+      sql: 'INSERT INTO metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+      bind: ['last_full_sync_time', new Date().toISOString()]
+    });
 
     self.postMessage({ type: 'SYNC_COMPLETE', payload: { count: bookmarks.length }, id });
 

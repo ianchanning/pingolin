@@ -8,7 +8,8 @@ A liberated, offline-first, zero-maintenance Progressive Web App (PWA) designed 
 
 - **The Bridge (Proxy):** A Cloudflare Worker that acts as a transparent, CORS-bypassing conduit to `api.pinboard.in`. It injects mandatory headers (User-Agent) to satisfy Pinboard's legacy backend and handles 429 rate-limiting backpressure.
 - **The Engine (Local Storage):** SQLite WASM backed by the Origin Private File System (OPFS). All data operations (22,000+ records) happen in a background Web Worker to ensure a guaranteed 60fps UI.
-- **The Search:** Lightning-fast Full-Text Search (FTS5) index that updates via SQL triggers.
+- **The Search:** Lightning-fast Full-Text Search (FTS5) index that handles punctuation-heavy tags via a dual-query strategy (Exact Match vs. Fuzzy).
+- **The Universal Fortress (Validation):** A language-agnostic Playwright E2E suite that verifies the app's behavior as a black box using a Page Object Model (POM).
 - **The UI:** "Brutally Simple" design philosophy. Single-screen, virtualized scrolling, and instantaneous reactive filtering.
 
 ## Setup Instructions
@@ -88,6 +89,26 @@ Building this fortress required deep-packet inspection of the aging Pinboard v1 
     1.  Update all affected bookmarks locally.
     2.  Push them upstream via `/posts/add`.
     3.  Globally delete the old tag via `/tags/delete`.
+
+### 8. The Punctuation Paradox (FTS5)
+*   **Problem:** FTS5 tokenizers often strip punctuation (`.` and `:`), making it impossible to search for tags like `subject:cs.AI`.
+*   **Fix:** The search engine detects a `#` prefix and switches from fuzzy FTS5 to a precise `tags LIKE ?` SQL query, ensuring punctuation is honored.
+
+### 9. The Ghost User Deadlock (Handshake Stability)
+*   **Problem:** Accounts with 0 bookmarks could deadlock the UI because the sync handshake sentinel was only written if data was ingested.
+*   **Fix:** The worker now authoritatively writes the `last_full_sync_time` sentinel at the end of every hydration ritual, even for empty datasets, unlocking the UI for new users.
+
+## The Universal Fortress (E2E Validation)
+
+To guarantee the 30-year lifespan, we have armored the codebase with **The Universal Fortress**—a Playwright-based testing suite (see `spec/004-testing-scenarios.md`).
+
+- **Black Box Testing:** Tests target `data-testid` attributes, treating the PWA as a black box. This allows the underlying implementation to be rewritten (e.g., in PureScript or Elm) while maintaining the behavioral contract.
+- **The 10 Rituals:** We automate 10 critical scenarios including **Bootstrap Sync**, **Offline Persistence**, **The Dates Hack (Deletion)**, and **429 Rate-Limit Backoff**.
+- **Run Tests:**
+  ```bash
+  cd pwa
+  npm test
+  ```
 
 ## Developer & Debugging Tools
 
