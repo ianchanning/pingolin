@@ -705,11 +705,13 @@ const initApp = async () => {
   let performSearch: (query: string, updateUrl?: boolean) => Promise<void>;
   let vList: VirtualizedList;
 
-  refreshData = async () => {
-    const existing = await db.getAll();
+  const updateUIState = async (currentViewCount: number, isSearch: boolean) => {
     const hasToken = !!(await db.getMetadata('auth_token'))?.value;
     const hasSynced = !!(await db.getMetadata('last_full_sync_time'))?.value;
-    const hasData = existing && existing.length > 0;
+    
+    // Check if we have ANY data in the DB for locking logic
+    const totalCount = await db.getBookmarkCount();
+    const hasData = totalCount > 0;
 
     // Unlock UI if we have a token AND (data exists OR setup ritual complete)
     const isUnlocked = hasToken && (hasData || hasSynced);
@@ -723,20 +725,23 @@ const initApp = async () => {
     }
 
     // If we have data, we hide the login container (unless token is missing)
-    // If we have NO data, we ALWAYS show the sync button to allow re-ingestion
-    // BUT: If we are currently syncing, hide it to avoid double-triggers
     loginContainer.style.display = (hasData && hasToken) || sync.isSyncing ? 'none' : 'flex';
 
-    if (hasData) {
-      statusEl.innerHTML = `${existing.length} ${!hasToken ? '<span class="token-error">(Sync Disabled: No Key)</span>' : ''}`;
-      vList.updateItems(existing);
+    if (isSearch) {
+      statusEl.innerHTML = `${currentViewCount}`;
+    } else if (hasData) {
+      statusEl.innerHTML = `${totalCount} ${!hasToken ? '<span class="token-error">(Sync Disabled: No Key)</span>' : ''}`;
     } else if (isUnlocked) {
       statusEl.textContent = 'Fortress initialized. No bookmarks found on server.';
-      vList.updateItems([]);
     } else {
       statusEl.innerHTML = 'Empty database. Insert your token from <a href="https://pinboard.in/settings/password">pinboard.in/settings/password</a>.';
-      vList.updateItems([]);
     }
+  };
+
+  refreshData = async () => {
+    const existing = await db.getAll();
+    await updateUIState(existing.length, false);
+    vList.updateItems(existing);
   };
 
   performSearch = async (query: string, updateUrl = true) => {
@@ -758,8 +763,8 @@ const initApp = async () => {
 
     try {
       const results = await db.search(query);
+      await updateUIState(results.length, true);
       vList.updateItems(results);
-      statusEl.innerHTML = `${results.length}`;
     } catch (e) {
       console.error('Search error:', e);
     }
@@ -812,7 +817,7 @@ const initApp = async () => {
 
     (window as any).deleteBookmark = async (href: string) => {
       await db.localDelete(href);
-      await refreshData();
+      if ((window as any).refreshApp) await (window as any).refreshApp();
       sync.trigger();
     };
 

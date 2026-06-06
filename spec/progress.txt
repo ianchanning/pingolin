@@ -72,4 +72,5 @@
 - [x] Execute Scenario 1-2 (The Initial Ingestion Rituals).
 - [x] Execute Scenario 3-5 (The Consistency & Search Rituals).
 - [x] Execute Scenario 6-9 (The Offline & Conflict Rituals).
+- [x] Execute Scenario 11-12 (The Persistence & Deep Link Rituals).
 

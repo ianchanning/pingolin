@@ -9,3 +9,4 @@ pwa/dist/
 *.db-journal
 *.db-shm
 *.db-wal
+.aider*

@@ -186,4 +186,39 @@ test.describe('The Universal Fortress', () => {
     await expect(list).toHaveCount(1, { timeout: 20000 });
     await expect(list).toContainText('Apple');
   });
+
+  test('Scenario 12: Deep Link Refresh (Persistence)', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-deep-${Math.random().toString(36).substring(7)}.db`;
+    
+    const bookmarks = [
+      { href: 'https://year.com', description: 'Yearly Review', tags: 'year', time: '2023-10-01T12:00:00Z' },
+      { href: 'https://other.com', description: 'Other', tags: 'other', time: '2023-10-01T12:01:00Z' },
+    ];
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', bookmarks);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    // 1. Initial Load and Login
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(2, { timeout: 10000 });
+
+    // 2. Perform Search to set URL
+    await app.search('year');
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1);
+    await expect(page.url()).toContain('q=year');
+
+    // 3. REFRESH the page with the query in URL
+    // We need to keep the dbName so it doesn't create a fresh empty DB
+    await page.goto(`/?dbName=${dbName}&q=year`);
+    
+    // 4. Assert that the search is still active and results are visible
+    await expect(app.searchInput).toHaveValue('year');
+    const list = page.getByTestId('bookmark-item');
+    await expect(list).toHaveCount(1, { timeout: 10000 });
+    await expect(list).toContainText('Yearly Review');
+  });
 });
