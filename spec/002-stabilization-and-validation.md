@@ -53,7 +53,7 @@ Refine the current prototype into a "Golden Master" state. Fix lingering UI/Sync
 ---
 
 ## Success Criteria
-- [ ] UI layout is responsive to form toggles with 0 scrollbar jitter.
-- [ ] Searching for `#subject:cs.CL` returns exact matches including punctuation.
-- [ ] Background additions appear in the list automatically within 5 seconds of the sync loop.
-- [ ] A complete Playwright test suite passes against the current JS implementation.
+- [x] UI layout is responsive to form toggles with 0 scrollbar jitter.
+- [x] Searching for `#subject:cs.CL` returns exact matches including punctuation.
+- [x] Background additions appear in the list automatically within 5 seconds of the sync loop.
+- [x] A complete Playwright test suite passes against the current JS implementation.
