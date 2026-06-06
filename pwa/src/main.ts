@@ -55,6 +55,10 @@ class DatabaseBridge {
     return this.send('GET_BOOKMARK_COUNT');
   }
 
+  async getLatestBookmarkTime(): Promise<string | null> {
+    return this.send('GET_LATEST_BOOKMARK_TIME');
+  }
+
   async getPopularTags(): Promise<string[]> {
     return this.send('GET_POPULAR_TAGS');
   }
@@ -239,9 +243,15 @@ class SyncOrchestrator {
   private authToken: string | null = null;
   private syncIndicator: HTMLElement;
   private timerHandle: any = null;
+  private intervalMs: number = 60000;
 
   constructor(syncIndicatorId: string) {
     this.syncIndicator = document.getElementById(syncIndicatorId)!;
+  }
+
+  setInterval(ms: number) {
+    this.intervalMs = ms;
+    console.log(`[Sync] Interval updated to ${ms}ms`);
   }
 
   setAuthToken(token: string) {
@@ -288,14 +298,32 @@ class SyncOrchestrator {
   async startLoop() {
     if (this.isSyncing || !this.authToken) return;
 
-    // 0. Sanity Check: If no sync has ever been attempted, abort.
-    const hasSynced = !!(await db.getMetadata('last_full_sync_time'))?.value;
-    if (!hasSynced) {
-      console.warn('[Sync] Loop aborted: No previous sync found. Please perform an Initial Sync.');
-      return;
+    // Clear any existing timer to avoid double-scheduling
+    if (this.timerHandle) {
+      clearTimeout(this.timerHandle);
+      this.timerHandle = null;
     }
 
+    // 0. Sanity Check & Self-Healing:
+    const hasSynced = !!(await db.getMetadata('last_full_sync_time'))?.value;
     const count = await db.getBookmarkCount();
+
+    if (!hasSynced) {
+      if (count > 0) {
+        console.warn('[Sync] Zombie Database Detected: Data exists but no sentinel. Initiating Self-Healing...');
+        const latestTime = await db.getLatestBookmarkTime();
+        if (latestTime) {
+          await db.setMetadata('last_full_sync_time', latestTime);
+          console.log(`[Sync] Self-Healing Complete: Handshake set to ${latestTime}`);
+        } else {
+          console.error('[Sync] Self-Healing Failed: Could not determine latest bookmark time.');
+          return;
+        }
+      } else {
+        console.warn('[Sync] Loop aborted: No previous sync found. Please perform an Initial Sync.');
+        return;
+      }
+    }
 
     this.isSyncing = true;
     this.needsSync = false;
@@ -385,8 +413,8 @@ class SyncOrchestrator {
       if (this.needsSync) {
         this.startLoop();
       } else {
-        // Schedule next run in 1 minute
-        this.timerHandle = setTimeout(() => this.startLoop(), 60000);
+        // Schedule next run
+        this.timerHandle = setTimeout(() => this.startLoop(), this.intervalMs);
       }
     }
   }
@@ -939,21 +967,23 @@ const initApp = async () => {
         });
 
         // MANDATORY PATIENCE: After a massive sync, give the server a breather
-        statusEl.textContent = 'Sync complete. Finalizing...';
+        statusEl.textContent = 'Syncing...';
         await new Promise(resolve => setTimeout(resolve, 5000));
 
+        sync.setBusy(false); // Release the lock BEFORE starting the loop
         sync.startLoop();
 
         await refreshData();
         popularTagsCache = [];
         await populateTagSuggestions();
-      } catch (err) {
-        console.error('Sync Error:', err);
-        statusEl.textContent = 'Sync Failed: ' + err;
-      } finally {
+        } catch (err) {
+        console.error('Sync Failed:', err);
+        statusEl.textContent = 'Error: ' + err;
+        sync.setBusy(false);
+        } finally {
         syncButton.disabled = false;
-        sync.setBusy(false); // Release the lock
-      }
+        }
+
     };
 
   } catch (error) {

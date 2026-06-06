@@ -221,4 +221,95 @@ test.describe('The Universal Fortress', () => {
     await expect(list).toHaveCount(1, { timeout: 10000 });
     await expect(list).toContainText('Yearly Review');
   });
+
+  test('Scenario 13: The Heartbeat Ritual (Autosync Verification)', async ({ page }) => {
+    const app = new AppPage(page);
+    
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', [
+      { href: 'https://pulse.com', description: 'Pulse 1', tags: 'test', time: '2023-10-01T12:00:00Z' }
+    ]);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T12:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    await app.goto();
+    await app.login('test:TOKEN');
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 10000 });
+
+    // 1. Accelerate the heartbeat for testing
+    await page.evaluate(() => {
+      (window as any).sync.setInterval(2000);
+      (window as any).sync.startLoop();
+    });
+
+    // 2. Mock a NEW bookmark appearing on the server
+    const newBookmark = { href: 'https://pulse2.com', description: 'Pulse 2', tags: 'test', time: '2023-10-01T12:05:00Z' };
+    
+    // We need update_time to change to trigger delta sync
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/all', [newBookmark]);
+
+    // 3. Wait for the autosync to trigger and fetch the new bookmark
+    // We expect this to happen automatically within ~10-15s (2s interval + loop overhead)
+    const list = page.getByTestId('bookmark-item');
+    await expect(list).toHaveCount(2, { timeout: 20000 });
+    await expect(list.first()).toContainText('Pulse 2');
+  });
+
+  test('Scenario 14: The Zombie Database (Self-Healing Sync)', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-zombie-${Math.random().toString(36).substring(7)}.db`;
+    
+    // 1. Setup a "Zombie" state: Data exists, but NO sync sentinel
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', [
+      { href: 'https://zombie.com', description: 'Zombie Bookmark', tags: 'undead', time: '2023-10-01T12:00:00Z' }
+    ]);
+    
+    // We mock /posts/update to see if the app tries to sync after healing
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    
+    // Wait for initial sync to "complete" (ingest data)
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 10000 });
+
+    // 2. SIMULATE ZOMBIE STATE: Manually clear the sync sentinel in metadata
+    // We'll use a reload to simulate a crash that happened just before the sentinel was written
+    // But in our current code, hydration writes it. 
+    // Let's use a more direct approach: Clear it via evaluate after it was written
+    await page.evaluate(async () => {
+      const db = (window as any).db;
+      // We keep the auth_token but kill the sync sentinel
+      // In worker.ts, db.exec is internal, so we might need a debug method or just reload with a poisoned state
+      // Let's assume we reload and the sentinel is missing
+    });
+
+    // Actually, let's just mock the INIT response to return bookmarks but no sentinel
+    // But our current system is local-first. 
+    
+    // Better: We'll forge a database with a script or evaluate that puts it in this state.
+    await page.evaluate(async () => {
+      const db = (window as any).db;
+      // This mimics an interrupted sync where data was written but sentinel wasn't
+      await db.send('EXEC', { sql: "DELETE FROM metadata WHERE key = 'last_full_sync_time'" });
+      location.reload();
+    });
+
+    // 3. Page reloads. Database has 1 bookmark, but no sentinel.
+    // The logs in the prompt show: "[Sync] Loop aborted: No previous sync found."
+    // We want to ASSERT that the sync loop RECOVERS and fetches updates.
+    
+    // Mock a NEW bookmark that only a functioning sync loop would catch
+    const revivalBookmark = { href: 'https://revival.com', description: 'Revived!', tags: 'life', time: '2023-10-01T14:00:00Z' };
+    await app.mockProxy('/posts/all', [revivalBookmark]);
+
+    // If the bug exists, the count will stay 1.
+    // If we fix it, the count should become 2.
+    const list = page.getByTestId('bookmark-item');
+    await expect(list).toHaveCount(2, { timeout: 20000 });
+    await expect(list.first()).toContainText('Revived!');
+  });
 });

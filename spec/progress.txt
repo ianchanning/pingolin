@@ -73,4 +73,5 @@
 - [x] Execute Scenario 3-5 (The Consistency & Search Rituals).
 - [x] Execute Scenario 6-9 (The Offline & Conflict Rituals).
 - [x] Execute Scenario 11-12 (The Persistence & Deep Link Rituals).
+- [x] Execute Scenario 13 (The Heartbeat Ritual / Autosync).
 

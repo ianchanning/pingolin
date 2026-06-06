@@ -309,14 +309,26 @@ self.onmessage = async (e) => {
       }
 
       case 'GET_BOOKMARK_COUNT': {
-        const rowCount = db.exec({
+        const rows = db.exec({
           sql: 'SELECT COUNT(*) as count FROM bookmarks',
           returnValue: 'resultRows',
           rowMode: 'object'
         });
-        self.postMessage({ type: 'QUERY_RESULTS', payload: rowCount[0].count, id });
+        self.postMessage({ type: 'QUERY_RESULTS', payload: rows[0].count, id });
         break;
       }
+
+      case 'GET_LATEST_BOOKMARK_TIME': {
+        const rows = db.exec({
+          sql: 'SELECT time FROM bookmarks ORDER BY time DESC LIMIT 1',
+          returnValue: 'resultRows',
+          rowMode: 'object'
+        });
+        const latestTime = rows.length > 0 ? rows[0].time : null;
+        self.postMessage({ type: 'QUERY_RESULTS', payload: latestTime, id });
+        break;
+      }
+
 
       case 'GET_POPULAR_TAGS': {
         const tagRows = db.exec({
@@ -379,6 +391,13 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
+
+      case 'EXEC': {
+        const { sql, bind } = payload;
+        db.exec({ sql, bind });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
+      }
 
       case 'SET_SYNCHRONIZED': {
         // Payload is href
