@@ -43,29 +43,40 @@ test.describe('The Universal Fortress', () => {
 
   test('Scenario 3: The Punctuation Paradox (Exact Tag Matching)', async ({ page }) => {
     const app = new AppPage(page);
+    const dbName = `test-punct-${Math.random().toString(36).substring(7)}.db`;
     
-    // 1. Mock the search response for an exact tag
-    // We expect the app to call search with "#subject:cs.AI"
+    // Rigorous Data: Testing space-padding and complex delimiters
+    const bookmarks = [
+      { href: '1', description: 'Target', tags: 'subject:cs.AI tui', time: '2023-10-01T12:00:00Z' },
+      { href: '2', description: 'False Positive 1', tags: 'subject:cs.AI:ext', time: '2023-10-01T12:01:00Z' },
+      { href: '3', description: 'False Positive 2', tags: 'not:subject:cs.AI', time: '2023-10-01T12:02:00Z' },
+      { href: '4', description: 'Partial Match', tags: 'cs.AI', time: '2023-10-01T12:03:00Z' },
+    ];
+
     await app.mockProxy('/posts/recent', []);
-    await app.mockProxy('/posts/all', [
-      { href: 'https://example.com/1', description: 'Bookmark A', tags: 'subject:cs.AI tui', time: '2023-10-01T12:00:00Z' },
-      { href: 'https://example.com/2', description: 'Bookmark B', tags: 'subject:cs.CL terminal', time: '2023-10-01T12:01:00Z' },
-    ]);
+    await app.mockProxy('/posts/all', bookmarks);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T12:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
 
-    await app.goto();
-    
-    // We need to bypass login if token already exists, but here we'll just login
+    await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(2, { timeout: 10000 });
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(4, { timeout: 10000 });
 
-    // 2. Perform Exact Tag Search
+    // 1. Perform Exact Tag Search
     await app.search('#subject:cs.AI');
     
-    // Assert that only Bookmark A is visible
+    // Assert: Only exactly 'subject:cs.AI' should match due to our space-padding heuristic
     const list = page.getByTestId('bookmark-item');
     await expect(list).toHaveCount(1);
-    await expect(list).toContainText('Bookmark A');
-    await expect(list).not.toContainText('Bookmark B');
+    await expect(list).toContainText('Target');
+    await expect(list).not.toContainText('False Positive');
+    await expect(list).not.toContainText('Partial Match');
+
+    // 2. Perform another exact search for the partial one
+    await app.search('#cs.AI');
+    await expect(list).toHaveCount(1);
+    await expect(list).toContainText('Partial Match');
+    await expect(list).not.toContainText('Target');
   });
 
   test('Scenario 6: The Offline Fortress (Persistence)', async ({ page, context }) => {
