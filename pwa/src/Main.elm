@@ -314,44 +314,46 @@ handleWorkerMsg msg model =
 view : Model -> Html Msg
 view model =
     div [ class "pingolin-fortress" ]
-        [ h1 [] [ text "PINGOLIN" ]
-        , if not model.isOnline then
-            div [ class "offline-banner", attribute "data-testid" "network-status" ] [ text "OFFLINE" ]
-          else
-            text ""
-        , if not model.isHydrated then
-            div [ class "ritual-controls", attribute "data-testid" "login-container" ]
-                [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
-                , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
-                , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
-                ]
-          else
-            text ""
-        , div [ class "search-chamber" ]
-            [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] []
-            , button [ attribute "id" "toggle-add-btn", onClick ToggleAddForm ] [ text "+" ]
+        [ div [ attribute "id" "masthead" ]
+            [ div [ class "top-bar" ] 
+                [ text (if model.isOnline then "ONLINE | STEEL & STONE" else "OFFLINE | CHAOS DETECTED") ]
+            , h1 [] [ text "pingolin" ]
             ]
-        , if model.showAddForm then
-            div [ class "add-form", attribute "data-testid" "add-form" ]
-                [ input [ placeholder "URL", value model.newBookmark.href, onInput SetNewHref, attribute "data-testid" "new-url" ] []
-                , input [ placeholder "Title", value model.newBookmark.description, onInput SetNewDescription, attribute "data-testid" "new-title" ] []
-                , input [ placeholder "Tags", value model.newBookmark.tags, onInput SetNewTags, attribute "data-testid" "new-tags", attribute "list" "tag-suggestions" ] []
-                , Html.datalist [ attribute "id" "tag-suggestions" ]
-                    (List.map (\tag -> Html.option [ value tag ] []) model.tagSuggestions)
-                , button [ onClick SubmitAdd, attribute "data-testid" "add-button" ] [ text "Add Bookmark" ]
-                ]
-          else
-            text ""
-        , div [ class "status-chamber" ]
-            [ div [ attribute "data-testid" "sync-status" ] 
-                [ text ("STATE: " ++ model.status ++ " | POS: " ++ String.fromInt model.scrollTop ++ " | VIEW: " ++ String.fromInt model.viewportHeight ++ " | RANGE: " ++ String.fromInt (List.length model.bookmarks)) ]
-            , if model.progress > 0 && model.progress < 1.0 then
-                div [ class "progress-bar", attribute "data-testid" "sync-progress" ] 
-                    [ div [ class "progress-fill", style "width" (String.fromFloat (model.progress * 100) ++ "%") ] [] ]
+        , div [ attribute "id" "contain" ]
+            [ if not model.isHydrated then
+                div [ class "ritual-controls", attribute "data-testid" "login-container" ]
+                    [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
+                    , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
+                    , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
+                    ]
               else
                 text ""
+            , div [ class "search-chamber" ]
+                [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] []
+                , button [ attribute "id" "toggle-add-btn", onClick ToggleAddForm ] [ text "+" ]
+                ]
+            , if model.showAddForm then
+                div [ class "add-form", attribute "data-testid" "add-form" ]
+                    [ input [ placeholder "URL", value model.newBookmark.href, onInput SetNewHref, attribute "data-testid" "new-url" ] []
+                    , input [ placeholder "Title", value model.newBookmark.description, onInput SetNewDescription, attribute "data-testid" "new-title" ] []
+                    , input [ placeholder "Tags", value model.newBookmark.tags, onInput SetNewTags, attribute "data-testid" "new-tags", attribute "list" "tag-suggestions" ] []
+                    , Html.datalist [ attribute "id" "tag-suggestions" ]
+                        (List.map (\tag -> Html.option [ value tag ] []) model.tagSuggestions)
+                    , button [ onClick SubmitAdd, attribute "data-testid" "add-button" ] [ text "Add Bookmark" ]
+                    ]
+              else
+                text ""
+            , div [ class "status-chamber" ]
+                [ div [ attribute "data-testid" "sync-status" ] 
+                    [ text ("STATE: " ++ model.status ++ " | POS: " ++ String.fromInt model.scrollTop ++ " | VIEW: " ++ String.fromInt model.viewportHeight ++ " | RANGE: " ++ String.fromInt (List.length model.bookmarks)) ]
+                , if model.progress > 0 && model.progress < 1.0 then
+                    div [ class "progress-bar", attribute "data-testid" "sync-progress" ] 
+                        [ div [ class "progress-fill", style "width" (String.fromFloat (model.progress * 100) ++ "%") ] [] ]
+                  else
+                    text ""
+                ]
+            , viewVirtualList model
             ]
-        , viewVirtualList model
         ]
 
 rowHeight : Int
@@ -397,9 +399,12 @@ viewIndexedBookmark (index, b) =
             div [ class "pending-icon", attribute "data-testid" "pending-icon" ] [ text "🔄" ]
           else
             text ""
-        , div [ class "href" ] [ text b.href ]
         , div [ class "desc" ] [ text b.description ]
-        , div [ class "tags" ] [ text (String.join " · " b.tags) ]
+        , div [ class "href" ] [ text b.href ]
+        , div [ class "tags" ] 
+            [ Html.label [] [ text "Tags: " ]
+            , text (String.join ", " b.tags) 
+            ]
         ]
 
 -- SUBSCRIPTIONS

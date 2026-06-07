@@ -6,29 +6,145 @@
     <title>Pingolin</title>
     <link rel="icon" href="/favicon.ico">
     <style>
-        :root { --bg: #0f0f0f; --fg: #e0e0e0; --accent: #ff3e00; --border: #333; }
-        html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: 'JetBrains Mono', monospace, system-ui; line-height: 1.5; height: 100vh; overflow: hidden; }
+        :root { 
+            --bg: #FFF; 
+            --fg: #330; 
+            --accent: #933100; 
+            --header-bg: #F3F3CC;
+            --green-bar: #9EB847;
+            --border: #CC9;
+        }
+        html, body { 
+            margin: 0; padding: 0; 
+            background: var(--bg) url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAAhCAYAAAAcTBGCAAAAI0lEQVQYV2P8/PnMfwYoYCSHc/ToWsoMwG3pvB3uCKNHOQwA7pJivwLO3TkAAAAASUVORK5CYII=) 0 100% repeat-x;
+            color: var(--fg); 
+            font-family: "Lucida Grande", Arial, Helvetica, sans-serif;
+            line-height: 1.2em;
+            height: 100vh; overflow: hidden; 
+        }
         #elm-app { height: 100vh; width: 100vw; display: flex; flex-direction: column; overflow: hidden; }
-        .pingolin-fortress { padding: 2rem; max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; width: 100%; overflow: hidden; }
-        h1 { font-size: 3rem; font-weight: 900; letter-spacing: -2px; color: var(--accent); margin: 0 0 1rem 0; text-transform: uppercase; flex-shrink: 0; }
-        .ritual-controls, .search-chamber { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-shrink: 0; }
-        input { background: #1a1a1a; border: 1px solid var(--border); color: var(--fg); padding: 0.5rem; flex: 1; font-family: inherit; }
+        
+        #masthead {
+            background: var(--header-bg) url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAA8CAYAAACjBADHAAAAHklEQVQoU2Oct8P9PwMUMH7+fGaUMxoGIygdICd/AP+S249Kj5zzAAAAAElFTkSuQmCC) 0 35px repeat-x;
+            height: 101px;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+            position: relative;
+        }
+        #masthead .top-bar {
+            background: var(--green-bar);
+            color: #452;
+            height: 22px;
+            padding: 6px 10% 0;
+            margin: 0;
+            font-size: 0.85em;
+            text-align: right;
+            font-weight: normal;
+        }
+        #masthead h1 {
+            position: absolute;
+            top: 48px;
+            left: 10%;
+            margin: 0;
+            font-size: 3rem;
+            font-family: Georgia, serif;
+            color: var(--fg);
+            letter-spacing: -2px;
+            font-weight: normal;
+        }
+        
+        .pingolin-fortress { 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            box-sizing: border-box; 
+            width: 100%; 
+            overflow: hidden; 
+        }
+        
+        #contain {
+            margin: 0 10%;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            max-width: 1000px;
+        }
+        
+        .search-chamber {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-shrink: 0;
+        }
+        
+        input { 
+            border: 1px solid #aaa;
+            background-color: #f8fdff;
+            padding: 4px;
+            font: 13px "Lucida Grande", Helvetica, Arial, sans-serif;
+            flex: 1;
+        }
         input:focus { border-color: var(--accent); outline: none; }
-        button { background: var(--accent); border: none; color: #fff; padding: 0.5rem 1rem; font-weight: bold; cursor: pointer; text-transform: uppercase; flex-shrink: 0; }
-        button:hover { filter: brightness(1.2); }
-        .status-chamber { margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border); font-size: 0.8rem; background: #141414; flex-shrink: 0; }
-        .progress-bar { height: 4px; background: #222; margin-top: 0.5rem; position: relative; overflow: hidden; }
-        .progress-fill { position: absolute; height: 100%; background: var(--accent); transition: width 0.3s ease-out; }
-        .archive-scroll-container { flex: 1; overflow-y: auto; position: relative; width: 100%; min-height: 0; }
-        .archive-height-spacer { width: 100%; position: relative; }
-        .bookmark-shrine { padding: 1rem; border-left: 2px solid var(--border); transition: border-color 0.2s; box-sizing: border-box; background: var(--bg); }
-        .bookmark-shrine:hover { border-color: var(--accent); background: #141414; }
-        .href { font-size: 0.7rem; color: #666; word-break: break-all; margin-bottom: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .desc { font-weight: bold; margin-bottom: 0.3rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .tags { font-size: 0.8rem; color: var(--accent); opacity: 0.8; }
-        .offline-banner { background: #ff0000; color: #fff; padding: 0.5rem; text-align: center; font-weight: bold; flex-shrink: 0; z-index: 100; }
-        .add-form { background: #1a1a1a; border: 1px solid var(--border); padding: 1rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; flex-shrink: 0; }
-        .pending-icon { float: right; color: var(--accent); }
+        
+        button { 
+            background: var(--accent); 
+            border: 1px solid #8B8B5C;
+            color: #FFF; 
+            padding: 4px 10px; 
+            font-weight: bold; 
+            cursor: pointer;
+            font-size: 0.8em;
+            text-transform: uppercase;
+        }
+        button:hover { filter: brightness(1.1); }
+        
+        .status-chamber { 
+            margin-bottom: 1rem; 
+            padding: 0.5rem; 
+            border: 1px solid var(--border); 
+            font-size: 0.75em; 
+            background: #F2F2DE; 
+            flex-shrink: 0; 
+            color: #660;
+        }
+        .progress-bar { height: 4px; background: #DDD; margin-top: 0.5rem; position: relative; overflow: hidden; }
+        .progress-fill { position: absolute; height: 100%; background: var(--green-bar); transition: width 0.3s ease-out; }
+        
+        .archive-scroll-container { 
+            flex: 1; 
+            overflow-y: auto; 
+            position: relative; 
+            width: 100%; 
+            min-height: 0;
+            border-top: 1px solid #996;
+        }
+        
+        .bookmark-shrine { 
+            padding: 1rem 0; 
+            border-bottom: 1px dotted #996; 
+            box-sizing: border-box; 
+            background: transparent; 
+        }
+        .bookmark-shrine:hover { background: #f9f9f9; }
+        
+        .desc { 
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            font-weight: bold; 
+            color: #369; 
+            margin-bottom: 0.3rem; 
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .href { font-size: 0.75rem; color: #666; margin-bottom: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tags { font-size: 0.85em; color: #330; }
+        .tags label { color: #666; font-weight: normal; margin-right: 4px; }
+        
+        .pending-icon { float: right; color: var(--accent); font-size: 1.2em; }
+        
+        .ritual-controls { margin-bottom: 2em; padding: 1.5em; background: #F3F3CC; border: 1px solid var(--border); display: flex; gap: 0.5rem; }
+        .add-form { background: #F2F2DE; border: 1px solid #8B8B5C; padding: 1rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; flex-shrink: 0; }
     </style>
 </head>
 <body>
