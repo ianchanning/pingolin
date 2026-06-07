@@ -460,6 +460,11 @@ self.onmessage = async (e) => {
         await hydrateArchive(payload.proxyUrl, payload.authToken, id);
         break;
 
+      case 'START_SYNC_LOOP':
+        startSyncLoop(payload.proxyUrl, payload.authToken);
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
+
       default:
         console.warn('Unknown message type:', type);
     }
@@ -539,4 +544,235 @@ const hydrateArchive = async (proxyUrl: string, authToken: string, id: string) =
   } catch (error) {
     throw error;
   }
+};
+
+let syncLoopActive = false;
+const startSyncLoop = (proxyUrl: string, authToken: string) => {
+  if (syncLoopActive) return;
+  syncLoopActive = true;
+  console.log('[Worker] Sync Loop Started');
+
+  const tick = async () => {
+    try {
+      await flushPendingChanges(proxyUrl, authToken);
+      await checkForUpdates(proxyUrl, authToken);
+    } catch (err) {
+      console.error('[Worker] Sync Loop Error:', err);
+    }
+    setTimeout(tick, 60000); // Check every minute
+  };
+
+  tick();
+};
+
+const flushPendingChanges = async (proxyUrl: string, authToken: string) => {
+  const pending = db.exec({
+    sql: "SELECT * FROM bookmarks WHERE sync_status != 'SYNCHRONIZED' ORDER BY local_last_modified ASC",
+    returnValue: 'resultRows',
+    rowMode: 'object'
+  });
+
+  if (pending.length === 0) return;
+
+  console.log(`[Worker] Flushing ${pending.length} pending changes...`);
+
+  for (const b of pending) {
+    try {
+      if (b.sync_status === 'PENDING_DELETE') {
+        await deleteBookmark(proxyUrl, authToken, b.href);
+      } else {
+        await addBookmark(proxyUrl, authToken, b);
+      }
+
+      // Mark as synchronized
+      db.exec({
+        sql: "UPDATE bookmarks SET sync_status = 'SYNCHRONIZED' WHERE href = ?",
+        bind: [b.href]
+      });
+
+      // Throttle to respect Pinboard API (3s as per roadmap)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    } catch (err) {
+      console.error(`[Worker] Failed to flush ${b.href}:`, err);
+      // We stop flushing on error to avoid hitting 429 repeatedly
+      break;
+    }
+  }
+};
+
+const addBookmark = async (proxyUrl: string, authToken: string, b: any) => {
+  const url = new URL(`${proxyUrl}/posts/add`);
+  const params = new URLSearchParams({
+    auth_token: authToken,
+    format: 'json',
+    href: b.href,
+    description: b.description || '',
+    extended: b.extended || '',
+    tags: b.tags || '',
+    time: b.time,
+    replace: 'yes'
+  });
+  url.search = params.toString();
+
+  const response = await fetch(url.toString());
+  if (!response.ok) throw new Error(`Add failed: ${response.status}`);
+  const data = await response.json();
+  if (data.result_code !== 'done') throw new Error(`Add failed: ${data.result_code}`);
+};
+
+const deleteBookmark = async (proxyUrl: string, authToken: string, href: string) => {
+  const url = new URL(`${proxyUrl}/posts/delete`);
+  const params = new URLSearchParams({
+    auth_token: authToken,
+    format: 'json',
+    url: href
+  });
+  url.search = params.toString();
+
+  const response = await fetch(url.toString());
+  if (!response.ok) throw new Error(`Delete failed: ${response.status}`);
+  const data = await response.json();
+  if (data.result_code !== 'done' && data.result_code !== 'item not found') {
+    throw new Error(`Delete failed: ${data.result_code}`);
+  }
+};
+
+const checkForUpdates = async (proxyUrl: string, authToken: string) => {
+  // 1. Get last update time from server
+  const updateUrl = `${proxyUrl}/posts/update?auth_token=${authToken}&format=json`;
+  const response = await fetch(updateUrl);
+  if (!response.ok) return;
+
+  const data = await response.json();
+  const serverUpdateTime = data.update_time;
+
+  // 2. Get local last sync time
+  const meta = db.exec({
+    sql: "SELECT value FROM metadata WHERE key = 'last_sync_time'",
+    returnValue: 'resultRows'
+  });
+  let localLastSync = meta.length > 0 ? meta[0][0] : null;
+
+  // Self-Healing: If sentinel is missing but bookmarks exist, adopt latest bookmark time
+  if (!localLastSync) {
+    const latest = db.exec({
+      sql: 'SELECT time FROM bookmarks ORDER BY time DESC LIMIT 1',
+      returnValue: 'resultRows'
+    });
+    if (latest.length > 0) {
+      localLastSync = latest[0][0];
+      console.log(`[Worker] Self-Healing: Adopted latest bookmark time as sentinel: ${localLastSync}`);
+      db.exec({
+        sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        bind: [localLastSync]
+      });
+    }
+  }
+
+  if (serverUpdateTime !== localLastSync) {
+    console.log(`[Worker] Update detected: ${localLastSync} -> ${serverUpdateTime}`);
+    await performDeltaSync(proxyUrl, authToken, localLastSync, serverUpdateTime);
+  } else {
+    // Even if updates are the same, we check for deletions via Dates Hack
+    // every few cycles or just always if it's cheap.
+    await performDatesHack(proxyUrl, authToken);
+  }
+};
+
+const performDeltaSync = async (proxyUrl: string, authToken: string, fromdt: string, serverTime: string) => {
+  console.log('[Worker] Performing Delta Sync...');
+  const url = `${proxyUrl}/posts/all?auth_token=${authToken}&format=json${fromdt ? `&fromdt=${fromdt}` : ''}`;
+  const response = await fetch(url);
+  if (!response.ok) return;
+
+  const bookmarks = await response.json();
+  if (bookmarks.length > 0) {
+    // Reuse UPSERT_BATCH logic or similar
+    // For simplicity, we just use the same logic as hydrateArchive but without progress
+    db.transaction((db: any) => {
+      const stmt = db.prepare(`
+        INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
+        VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?)
+        ON CONFLICT(href) DO UPDATE SET
+          description=excluded.description,
+          extended=excluded.extended,
+          tags=excluded.tags,
+          time=excluded.time,
+          local_last_modified=excluded.local_last_modified
+      `);
+      for (const b of bookmarks) {
+        stmt.bind([b.href, b.description, b.extended, b.tags, b.time, Date.now()]);
+        stmt.step();
+        stmt.reset();
+      }
+      stmt.finalize();
+    });
+    console.log(`[Worker] Delta sync ingested ${bookmarks.length} records.`);
+  }
+
+  // Update sentinel
+  db.exec({
+    sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    bind: [serverTime]
+  });
+
+  self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Delta sync complete.' } });
+};
+
+const performDatesHack = async (proxyUrl: string, authToken: string) => {
+  console.log('[Worker] Checking for invisible deletions (Dates Hack)...');
+  const url = `${proxyUrl}/posts/dates?auth_token=${authToken}&format=json`;
+  const response = await fetch(url);
+  if (!response.ok) return;
+
+  const serverDates = (await response.json()).dates;
+  const localDates = db.exec({
+    sql: `
+      SELECT strftime('%Y-%m-%d', time) as date_str, COUNT(*) as qty 
+      FROM bookmarks 
+      GROUP BY date_str
+    `,
+    returnValue: 'resultRows',
+    rowMode: 'object'
+  });
+
+  for (const row of localDates) {
+    const serverCount = parseInt(serverDates[row.date_str] || '0');
+    if (row.qty > serverCount) {
+      console.log(`[Worker] Dates Hack: Mismatch on ${row.date_str} (Local: ${row.qty}, Server: ${serverCount}). Reconciling...`);
+      await reconcileDate(proxyUrl, authToken, row.date_str);
+    }
+  }
+};
+
+const reconcileDate = async (proxyUrl: string, authToken: string, date: string) => {
+  const url = `${proxyUrl}/posts/get?auth_token=${authToken}&format=json&dt=${date}`;
+  const response = await fetch(url);
+  if (!response.ok) return;
+
+  const data = await response.json();
+  const serverBookmarks = data.posts;
+
+  // Trigger the existing RECONCILE_DATE logic in worker
+  // Actually we can just call the logic directly here
+  const serverHrefs = new Set(serverBookmarks.map((b: any) => b.href));
+  db.transaction((db: any) => {
+    const localRecords = db.exec({
+      sql: "SELECT href FROM bookmarks WHERE strftime('%Y-%m-%d', time) = ?",
+      bind: [date],
+      returnValue: 'resultRows',
+      rowMode: 'object'
+    });
+
+    const deleteStmt = db.prepare('DELETE FROM bookmarks WHERE href = ?');
+    for (const row of localRecords) {
+      if (!serverHrefs.has(row.href)) {
+        console.log(`[Worker] Dates Hack: Pruning deleted bookmark ${row.href}`);
+        deleteStmt.bind([row.href]);
+        deleteStmt.step();
+        deleteStmt.reset();
+      }
+    }
+    deleteStmt.finalize();
+  });
 };

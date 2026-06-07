@@ -10,3 +10,4 @@ pwa/dist/
 *.db-shm
 *.db-wal
 .aider*
+pwa/test-results/
