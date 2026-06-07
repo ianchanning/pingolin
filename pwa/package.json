@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -n \"SERVER,ELM\" -c \"cyan,magenta\" \"node server.js\" \"chokidar 'src/**/*.elm' -c 'elm make src/Main.elm --output=public/main.js' --initial\"",
-    "build": "elm make src/Main.elm --output=public/main.js --optimize",
+    "build": "elm make src/Main.elm --output=public/main.js --optimize && mkdir -p dist && cp -rv public/* dist/ && touch dist/.nojekyll",
     "test": "playwright test"
   },
   "devDependencies": {
