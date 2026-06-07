@@ -76,6 +76,19 @@ const initDb = async (dbName = '/pinboard.db') => {
     db.exec('PRAGMA synchronous = NORMAL;');
 
     console.log('[Worker] Database Ritual Complete.');
+
+    // Check for existing session
+    const meta = db.exec({
+      sql: "SELECT value FROM metadata WHERE key = 'last_full_sync_time'",
+      returnValue: 'resultRows',
+      rowMode: 'object'
+    });
+
+    if (meta.length > 0) {
+      console.log('[Worker] Session Detected:', meta[0].value);
+      self.postMessage({ type: 'SESSION_RESTORED', payload: meta[0].value });
+    }
+
     return true;
   } catch (error) {
     console.error('[Worker] Initialization Failure:', error);
@@ -302,11 +315,19 @@ const deleteBookmark = async (proxyUrl, authToken, href) => {
 
 const refreshPopularTags = (id) => {
   const tagRows = db.exec({ sql: 'SELECT tags FROM bookmarks', returnValue: 'resultRows', rowMode: 'object' });
+  const aliasRows = db.exec({ sql: 'SELECT mapped_tag FROM tag_aliases', returnValue: 'resultRows', rowMode: 'object' });
+  
   const counts = {};
   for (const row of tagRows) {
     const tList = (row.tags || '').split(' ').filter(Boolean);
     for (const t of tList) counts[t] = (counts[t] || 0) + 1;
   }
+  
+  // Add aliases with high priority (virtual count)
+  for (const row of aliasRows) {
+    counts[row.mapped_tag] = (counts[row.mapped_tag] || 0) + 1000;
+  }
+
   const sortedTags = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(e => e[0]);
   self.postMessage({ type: 'QUERY_RESULTS', payload: sortedTags, id });
 };
@@ -329,6 +350,12 @@ self.onmessage = async (e) => {
 
     switch (type) {
       case 'QUERY_SEARCH': {
+        if (!payload || payload.trim() === '') {
+          const all = db.exec({ sql: 'SELECT * FROM bookmarks ORDER BY time DESC', returnValue: 'resultRows', rowMode: 'object' });
+          self.postMessage({ type: 'QUERY_RESULTS', payload: all, id });
+          break;
+        }
+
         const aliasRows = db.exec({ sql: 'SELECT mapped_tag FROM tag_aliases WHERE keyword = ?', bind: [payload.toLowerCase()], returnValue: 'resultRows', rowMode: 'object' });
         const effectiveQuery = aliasRows.length > 0 ? aliasRows[0].mapped_tag : payload;
         let sql = effectiveQuery.startsWith('#') 
@@ -353,14 +380,14 @@ self.onmessage = async (e) => {
             bind: [payload.href, payload.description, payload.extended || '', payload.tags, payload.time || new Date().toISOString(), status, now]
           });
         });
-        self.postMessage({ type: 'EXEC_SUCCESS', id });
         self.postMessage({ type: 'REFRESH_REQUIRED' });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
         refreshPopularTags('popular-tags');
         break;
       case 'LOCAL_DELETE':
         db.exec({ sql: "UPDATE bookmarks SET sync_status = 'PENDING_DELETE', local_last_modified = ? WHERE href = ?", bind: [Date.now(), payload] });
-        self.postMessage({ type: 'EXEC_SUCCESS', id });
         self.postMessage({ type: 'REFRESH_REQUIRED' });
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
       case 'QUERY':
         const results = db.exec({ sql: payload.sql, bind: payload.bind, returnValue: 'resultRows', rowMode: 'object' });

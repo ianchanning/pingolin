@@ -423,6 +423,95 @@ test.describe('The Universal Fortress', () => {
 
     // Type the full word to trigger alias
     await tagsInput.type('st');
-    await expect(datalist.locator('option[value$="system"]')).toBeAttached();
+    await expect(datalist.locator('option[value$=\"system\"]')).toBeAttached();
+    });
+
+    test('Scenario 18: The Virtual Scroll Ritual', async ({ page }) => {
+    const app = new AppPage(page);
+    await app.goto('/?dbName=test-scroll.db');
+
+    // 1. Inject a large number of bookmarks directly into DB
+    const count = 100;
+    const bookmarks = Array.from({ length: count }, (_, i) => ({
+      href: `https://test-${i}.com`,
+      description: `Bookmark ${i}`,
+      tags: 'scroll test',
+      time: new Date(Date.now() - i * 1000).toISOString()
+    }));
+
+    await page.evaluate(async (items) => {
+      await window.db.debugClearDb();
+      for (const item of items) {
+        await window.db.send('LOCAL_UPSERT', item);
+      }
+      // Ensure "last_full_sync_time" exists to unlock UI
+      await window.db.query("INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?)", [new Date().toISOString()]);
+    }, bookmarks);
+
+    await page.reload();
+    // Use an auto-retrying expect to wait for the async ritual
+    await expect(app.syncStatus).toHaveText(/Session Restored|Archive Online/, { timeout: 10000 });
+    
+    const telemetry = await app.syncStatus.innerText();
+    console.log(`Telemetry: ${telemetry}`);
+
+    const container = page.locator('.archive-scroll-container');
+    const clientHeight = await container.evaluate(el => el.clientHeight);
+    console.log(`Container clientHeight: ${clientHeight}`);
+
+    // 2. Assert that DOM count is small (viewport ~800px, item 120px + buffer = ~15-20 items)
+    const list = page.getByTestId('bookmark-item');
+    const initialDomCount = await list.count();
+    console.log(`Initial DOM count: ${initialDomCount}`);
+    expect(initialDomCount).toBeLessThan(30);
+    await expect(list.first()).toContainText('Bookmark 0');
+
+    // 3. Scroll to the middle
+    await container.evaluate(el => el.scrollTop = 120 * 50); // Scroll to item 50
+
+    // Wait for Elm to catch up
+    await page.waitForTimeout(500);
+
+    // 4. Assert that content has shifted but DOM count is still small
+    const scrolledDomCount = await list.count();
+    console.log(`Scrolled DOM count: ${scrolledDomCount}`);
+    expect(scrolledDomCount).toBeLessThan(30);
+    
+    // Bookmark 0 should be gone from the entire list
+    const content = await list.allTextContents();
+    const hasBookmark0 = content.some(t => t.includes('Bookmark 0'));
+    const hasBookmark50 = content.some(t => t.includes('Bookmark 50'));
+    
+    expect(hasBookmark0).toBe(false);
+    expect(hasBookmark50).toBe(true);
+  });
+
+  test('Scenario 19: The Empty Search Ritual', async ({ page }) => {
+    const app = new AppPage(page);
+    await app.goto('/?dbName=test-empty-search.db');
+
+    // 1. Setup DB with some items
+    await page.evaluate(async () => {
+      await window.db.debugClearDb();
+      await window.db.send('LOCAL_UPSERT', { href: 'https://a.com', description: 'Apple', tags: 'fruit', time: new Date().toISOString() });
+      await window.db.send('LOCAL_UPSERT', { href: 'https://b.com', description: 'Banana', tags: 'fruit', time: new Date().toISOString() });
+      await window.db.query("INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?)", [new Date().toISOString()]);
+    });
+
+    await page.reload();
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(2);
+
+    // 2. Perform a search
+    await app.searchInput.fill('Apple');
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1);
+    await expect(page.getByTestId('bookmark-item')).toContainText('Apple');
+
+    // 3. Clear search
+    await app.searchInput.fill('');
+    const list = page.getByTestId('bookmark-item');
+    await expect(list).toHaveCount(2);
+    const allText = await list.allTextContents();
+    expect(allText.some(t => t.includes('Banana'))).toBe(true);
   });
 });
+

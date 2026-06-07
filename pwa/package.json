@@ -4,12 +4,14 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "elm make src/Main.elm --output=public/main.js && node server.js",
+    "dev": "concurrently -n \"SERVER,ELM\" -c \"cyan,magenta\" \"node server.js\" \"chokidar 'src/**/*.elm' -c 'elm make src/Main.elm --output=public/main.js' --initial\"",
     "build": "elm make src/Main.elm --output=public/main.js --optimize",
     "test": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.1",
+    "chokidar-cli": "^3.0.0",
+    "concurrently": "^10.0.3",
     "elm": "^0.19.1-6"
   },
   "dependencies": {

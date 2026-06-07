@@ -14,6 +14,8 @@ port fromWorker : (Decode.Value -> msg) -> Sub msg
 port updateUrl : String -> Cmd msg
 port networkStatus : (Bool -> msg) -> Sub msg
 port tagSuggestions : (List String -> msg) -> Sub msg
+port viewportSize : (Int -> msg) -> Sub msg
+port scrollPosition : (Int -> msg) -> Sub msg
 
 -- DOMAIN MODEL (Steel & Stone Edition)
 
@@ -43,6 +45,8 @@ type alias Model =
     , isHydrated : Bool
     , showAddForm : Bool
     , tagSuggestions : List String
+    , scrollTop : Int
+    , viewportHeight : Int
     , newBookmark :
         { href : String
         , description : String
@@ -70,6 +74,8 @@ init flags =
       , isHydrated = False
       , showAddForm = False
       , tagSuggestions = []
+      , scrollTop = 0
+      , viewportHeight = 800
       , newBookmark = { href = "", description = "", tags = "" }
       }
     , if initialQuery /= "" then
@@ -128,6 +134,9 @@ workerMessageDecoder =
                     "REFRESH_REQUIRED" ->
                         Decode.succeed RefreshRequiredMsg
 
+                    "SESSION_RESTORED" ->
+                        Decode.succeed SessionRestoredMsg
+
                     _ ->
                         Decode.succeed UnknownMsg
             )
@@ -139,6 +148,7 @@ type WorkerMsg
     | TagSuggestionsMsg (List String)
     | ErrorMsg String
     | RefreshRequiredMsg
+    | SessionRestoredMsg
     | UnknownMsg
 
 -- UPDATE (Pure Logic / Side-Effect Management)
@@ -156,6 +166,8 @@ type Msg
     | SubmitAdd
     | SetOnline Bool
     | SetTagSuggestions (List String)
+    | OnScroll Int
+    | OnResize Int
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -240,6 +252,12 @@ update msg model =
         SetTagSuggestions suggestions ->
             ( { model | tagSuggestions = suggestions }, Cmd.none )
 
+        OnScroll top ->
+            ( { model | scrollTop = top }, Cmd.none )
+
+        OnResize height ->
+            ( { model | viewportHeight = height }, Cmd.none )
+
 queryAll : Cmd msg
 queryAll =
     toWorker <|
@@ -268,11 +286,10 @@ handleWorkerMsg msg model =
 
         QueryResultsMsg bookmarks ->
             let
-                -- We only consider the app "hydrated" if we have bookmarks AND weren't already trying to sync
-                -- Or if we were already hydrated.
-                hydrated = model.isHydrated || not (List.isEmpty bookmarks)
+                hydrated =
+                    model.isHydrated || not (List.isEmpty bookmarks)
             in
-            ( { model | bookmarks = bookmarks, status = "Archive Online. " ++ String.fromInt (List.length bookmarks) ++ " records loaded.", isHydrated = hydrated }, Cmd.none )
+            ( { model | bookmarks = bookmarks, status = "Archive Online. " ++ String.fromInt (List.length bookmarks) ++ " records loaded.", isHydrated = hydrated, scrollTop = 0 }, Cmd.none )
 
         TagSuggestionsMsg suggestions ->
             ( { model | tagSuggestions = suggestions }, Cmd.none )
@@ -285,6 +302,9 @@ handleWorkerMsg msg model =
                 ( model, queryAll )
             else
                 ( model, querySearch model.query )
+
+        SessionRestoredMsg ->
+            ( { model | isHydrated = True, status = "Session Restored." }, queryAll )
 
         UnknownMsg ->
             ( model, Cmd.none )
@@ -323,20 +343,56 @@ view model =
           else
             text ""
         , div [ class "status-chamber" ]
-            [ div [ attribute "data-testid" "sync-status" ] [ text ("STATE: " ++ model.status) ]
+            [ div [ attribute "data-testid" "sync-status" ] 
+                [ text ("STATE: " ++ model.status ++ " | POS: " ++ String.fromInt model.scrollTop ++ " | VIEW: " ++ String.fromInt model.viewportHeight ++ " | RANGE: " ++ String.fromInt (List.length model.bookmarks)) ]
             , if model.progress > 0 && model.progress < 1.0 then
                 div [ class "progress-bar", attribute "data-testid" "sync-progress" ] 
                     [ div [ class "progress-fill", style "width" (String.fromFloat (model.progress * 100) ++ "%") ] [] ]
               else
                 text ""
             ]
-        , div [ class "archive-list" ]
-            (List.map viewBookmark model.bookmarks)
+        , viewVirtualList model
         ]
 
-viewBookmark : Bookmark -> Html Msg
-viewBookmark b =
-    div [ class "bookmark-shrine", attribute "data-testid" "bookmark-item" ]
+rowHeight : Int
+rowHeight = 120
+
+bufferItems : Int
+bufferItems = 5 -- Reduced for sharper updates
+
+viewVirtualList : Model -> Html Msg
+viewVirtualList model =
+    let
+        totalCount = List.length model.bookmarks
+        containerHeight = totalCount * rowHeight
+        
+        startIndex = max 0 ((model.scrollTop // rowHeight) - bufferItems)
+        endIndex = min (totalCount - 1) ((model.scrollTop + model.viewportHeight) // rowHeight + bufferItems)
+        
+        visibleBookmarks = 
+            model.bookmarks
+                |> List.drop startIndex
+                |> List.take (endIndex - startIndex + 1)
+                |> List.indexedMap (\i b -> (startIndex + i, b))
+    in
+    div [ class "archive-scroll-container" ]
+        [ div [ class "archive-height-spacer", style "height" (String.fromInt containerHeight ++ "px"), style "position" "relative" ]
+            (List.map viewIndexedBookmark visibleBookmarks)
+        ]
+
+viewIndexedBookmark : (Int, Bookmark) -> Html Msg
+viewIndexedBookmark (index, b) =
+    div 
+        [ class "bookmark-shrine"
+        , attribute "data-testid" "bookmark-item"
+        , style "position" "absolute"
+        , style "top" "0"
+        , style "left" "0"
+        , style "right" "0"
+        , style "height" (String.fromInt rowHeight ++ "px")
+        , style "transform" ("translateY(" ++ String.fromInt (index * rowHeight) ++ "px)")
+        , style "will-change" "transform"
+        ]
         [ if b.syncStatus /= Synchronized then
             div [ class "pending-icon", attribute "data-testid" "pending-icon" ] [ text "🔄" ]
           else
@@ -354,6 +410,8 @@ subscriptions _ =
         [ fromWorker FromWorker
         , networkStatus SetOnline
         , tagSuggestions SetTagSuggestions
+        , viewportSize OnResize
+        , scrollPosition OnScroll
         ]
 
 main : Program Flags Model Msg

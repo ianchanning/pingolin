@@ -49,6 +49,37 @@ const app = Elm.Main.init({
     }
 });
 
+if (app.ports && app.ports.viewportSize) {
+    const monitorContainer = () => {
+        const container = document.querySelector('.archive-scroll-container');
+        if (container) {
+            // Report actual container height for virtual scrolling range
+            app.ports.viewportSize.send(container.clientHeight);
+            
+            // Report scroll position
+            container.addEventListener('scroll', () => {
+                if (app.ports.scrollPosition) {
+                    app.ports.scrollPosition.send(Math.round(container.scrollTop));
+                }
+            }, { passive: true });
+
+            // Watch for size changes
+            const resizer = new ResizeObserver(() => {
+                app.ports.viewportSize.send(container.clientHeight);
+            });
+            resizer.observe(container);
+            return true;
+        }
+        return false;
+    };
+
+    // Retry until the container is rendered by Elm
+    const retryMonitor = () => {
+        if (!monitorContainer()) setTimeout(retryMonitor, 100);
+    };
+    retryMonitor();
+}
+
 // Port Bridge
 if (app.ports && app.ports.toWorker) {
     app.ports.toWorker.subscribe((msg) => {
