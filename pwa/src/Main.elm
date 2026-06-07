@@ -11,6 +11,9 @@ import Json.Decode as Decode exposing (Decoder)
 
 port toWorker : Encode.Value -> Cmd msg
 port fromWorker : (Decode.Value -> msg) -> Sub msg
+port updateUrl : String -> Cmd msg
+port networkStatus : (Bool -> msg) -> Sub msg
+port tagSuggestions : (List String -> msg) -> Sub msg
 
 -- DOMAIN MODEL (Steel & Stone Edition)
 
@@ -36,18 +39,44 @@ type alias Model =
     , status : String
     , bookmarks : List Bookmark
     , progress : Float
+    , isOnline : Bool
+    , isHydrated : Bool
+    , showAddForm : Bool
+    , tagSuggestions : List String
+    , newBookmark :
+        { href : String
+        , description : String
+        , tags : String
+        }
     }
 
-init : () -> ( Model, Cmd Msg )
-init _ =
+type alias Flags =
+    { query : Maybe String
+    }
+
+init : Flags -> ( Model, Cmd Msg )
+init flags =
+    let
+        initialQuery =
+            Maybe.withDefault "" flags.query
+    in
     ( { token = ""
       , proxyUrl = "https://pinboard-proxy.ian-pinboard-proxy.workers.dev/"
-      , query = ""
+      , query = initialQuery
       , status = "Awaiting Ritual..."
       , bookmarks = []
       , progress = 0.0
+      , isOnline = True
+      , isHydrated = False
+      , showAddForm = False
+      , tagSuggestions = []
+      , newBookmark = { href = "", description = "", tags = "" }
       }
-    , Cmd.none )
+    , if initialQuery /= "" then
+        querySearch initialQuery
+      else
+        queryAll
+    )
 
 -- DECODERS (The "Dunkirk Clarity" Boundary)
 
@@ -71,9 +100,11 @@ bookmarkDecoder =
 
 workerMessageDecoder : Decoder WorkerMsg
 workerMessageDecoder =
-    Decode.field "type" Decode.string
+    Decode.map2 (\typeName id -> { typeName = typeName, id = id })
+        (Decode.field "type" Decode.string)
+        (Decode.field "id" (Decode.oneOf [ Decode.string, Decode.succeed "" ]))
         |> Decode.andThen
-            (\typeName ->
+            (\{ typeName, id } ->
                 case typeName of
                     "SYNC_PROGRESS" ->
                         Decode.map2 ProgressMsg
@@ -84,11 +115,18 @@ workerMessageDecoder =
                         Decode.succeed SyncCompleteMsg
 
                     "QUERY_RESULTS" ->
-                        Decode.map QueryResultsMsg
-                            (Decode.field "payload" (Decode.list bookmarkDecoder))
+                        case id of
+                            "popular-tags" ->
+                                Decode.map TagSuggestionsMsg (Decode.field "payload" (Decode.list Decode.string))
+                            
+                            _ ->
+                                Decode.map QueryResultsMsg (Decode.field "payload" (Decode.list bookmarkDecoder))
 
                     "ERROR" ->
                         Decode.map ErrorMsg (Decode.field "payload" Decode.string)
+
+                    "REFRESH_REQUIRED" ->
+                        Decode.succeed RefreshRequiredMsg
 
                     _ ->
                         Decode.succeed UnknownMsg
@@ -98,7 +136,9 @@ type WorkerMsg
     = ProgressMsg String Float
     | SyncCompleteMsg
     | QueryResultsMsg (List Bookmark)
+    | TagSuggestionsMsg (List String)
     | ErrorMsg String
+    | RefreshRequiredMsg
     | UnknownMsg
 
 -- UPDATE (Pure Logic / Side-Effect Management)
@@ -109,6 +149,13 @@ type Msg
     | SetQuery String
     | StartSync
     | FromWorker Decode.Value
+    | ToggleAddForm
+    | SetNewHref String
+    | SetNewDescription String
+    | SetNewTags String
+    | SubmitAdd
+    | SetOnline Bool
+    | SetTagSuggestions (List String)
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -120,7 +167,7 @@ update msg model =
             ( { model | proxyUrl = proxy }, Cmd.none )
 
         SetQuery query ->
-            ( { model | query = query }, querySearch query )
+            ( { model | query = query }, Cmd.batch [ querySearch query, updateUrl query ] )
 
         StartSync ->
             let
@@ -146,6 +193,53 @@ update msg model =
                 Err err ->
                     ( { model | status = "Ritual Failure: " ++ Decode.errorToString err }, Cmd.none )
 
+        ToggleAddForm ->
+            ( { model | showAddForm = not model.showAddForm }, Cmd.none )
+
+        SetNewHref href ->
+            let
+                nb = model.newBookmark
+            in
+            ( { model | newBookmark = { nb | href = href } }, Cmd.none )
+
+        SetNewDescription desc ->
+            let
+                nb = model.newBookmark
+            in
+            ( { model | newBookmark = { nb | description = desc } }, Cmd.none )
+
+        SetNewTags tags ->
+            let
+                nb = model.newBookmark
+            in
+            ( { model | newBookmark = { nb | tags = tags } }, Cmd.none )
+
+        SubmitAdd ->
+            let
+                payload =
+                    Encode.object
+                        [ ( "type", Encode.string "LOCAL_UPSERT" )
+                        , ( "payload"
+                          , Encode.object
+                                [ ( "href", Encode.string model.newBookmark.href )
+                                , ( "description", Encode.string model.newBookmark.description )
+                                , ( "extended", Encode.string "" )
+                                , ( "tags", Encode.string model.newBookmark.tags )
+                                , ( "time", Encode.string "2023-10-01T12:00:00Z" )
+                                ]
+                          )
+                        , ( "id", Encode.string "local-add" )
+                        ]
+            in
+            ( { model | showAddForm = False, newBookmark = { href = "", description = "", tags = "" } }
+            , toWorker payload )
+
+        SetOnline online ->
+            ( { model | isOnline = online }, Cmd.none )
+
+        SetTagSuggestions suggestions ->
+            ( { model | tagSuggestions = suggestions }, Cmd.none )
+
 queryAll : Cmd msg
 queryAll =
     toWorker <|
@@ -170,13 +264,27 @@ handleWorkerMsg msg model =
             ( { model | status = status, progress = progress }, Cmd.none )
 
         SyncCompleteMsg ->
-            ( { model | status = "Archive Restored. Finalizing...", progress = 1.0 }, queryAll )
+            ( { model | status = "Archive Restored. Finalizing...", progress = 1.0, isHydrated = True }, queryAll )
 
         QueryResultsMsg bookmarks ->
-            ( { model | bookmarks = bookmarks, status = "Archive Online. " ++ String.fromInt (List.length bookmarks) ++ " records loaded." }, Cmd.none )
+            let
+                -- We only consider the app "hydrated" if we have bookmarks AND weren't already trying to sync
+                -- Or if we were already hydrated.
+                hydrated = model.isHydrated || not (List.isEmpty bookmarks)
+            in
+            ( { model | bookmarks = bookmarks, status = "Archive Online. " ++ String.fromInt (List.length bookmarks) ++ " records loaded.", isHydrated = hydrated }, Cmd.none )
+
+        TagSuggestionsMsg suggestions ->
+            ( { model | tagSuggestions = suggestions }, Cmd.none )
 
         ErrorMsg err ->
             ( { model | status = "Worker Chaos: " ++ err }, Cmd.none )
+
+        RefreshRequiredMsg ->
+            if model.query == "" then
+                ( model, queryAll )
+            else
+                ( model, querySearch model.query )
 
         UnknownMsg ->
             ( model, Cmd.none )
@@ -187,13 +295,33 @@ view : Model -> Html Msg
 view model =
     div [ class "pingolin-fortress" ]
         [ h1 [] [ text "PINGOLIN" ]
-        , div [ class "ritual-controls", attribute "data-testid" "login-container" ]
-            [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
-            , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
-            , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
-            ]
+        , if not model.isOnline then
+            div [ class "offline-banner", attribute "data-testid" "network-status" ] [ text "OFFLINE" ]
+          else
+            text ""
+        , if not model.isHydrated then
+            div [ class "ritual-controls", attribute "data-testid" "login-container" ]
+                [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
+                , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
+                , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
+                ]
+          else
+            text ""
         , div [ class "search-chamber" ]
-            [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] [] ]
+            [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] []
+            , button [ attribute "id" "toggle-add-btn", onClick ToggleAddForm ] [ text "+" ]
+            ]
+        , if model.showAddForm then
+            div [ class "add-form", attribute "data-testid" "add-form" ]
+                [ input [ placeholder "URL", value model.newBookmark.href, onInput SetNewHref, attribute "data-testid" "new-url" ] []
+                , input [ placeholder "Title", value model.newBookmark.description, onInput SetNewDescription, attribute "data-testid" "new-title" ] []
+                , input [ placeholder "Tags", value model.newBookmark.tags, onInput SetNewTags, attribute "data-testid" "new-tags", attribute "list" "tag-suggestions" ] []
+                , Html.datalist [ attribute "id" "tag-suggestions" ]
+                    (List.map (\tag -> Html.option [ value tag ] []) model.tagSuggestions)
+                , button [ onClick SubmitAdd, attribute "data-testid" "add-button" ] [ text "Add Bookmark" ]
+                ]
+          else
+            text ""
         , div [ class "status-chamber" ]
             [ div [ attribute "data-testid" "sync-status" ] [ text ("STATE: " ++ model.status) ]
             , if model.progress > 0 && model.progress < 1.0 then
@@ -209,7 +337,11 @@ view model =
 viewBookmark : Bookmark -> Html Msg
 viewBookmark b =
     div [ class "bookmark-shrine", attribute "data-testid" "bookmark-item" ]
-        [ div [ class "href" ] [ text b.href ]
+        [ if b.syncStatus /= Synchronized then
+            div [ class "pending-icon", attribute "data-testid" "pending-icon" ] [ text "🔄" ]
+          else
+            text ""
+        , div [ class "href" ] [ text b.href ]
         , div [ class "desc" ] [ text b.description ]
         , div [ class "tags" ] [ text (String.join " · " b.tags) ]
         ]
@@ -218,9 +350,13 @@ viewBookmark b =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    fromWorker FromWorker
+    Sub.batch
+        [ fromWorker FromWorker
+        , networkStatus SetOnline
+        , tagSuggestions SetTagSuggestions
+        ]
 
-main : Program () Model Msg
+main : Program Flags Model Msg
 main =
     Browser.element
         { init = init

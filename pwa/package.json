@@ -4,14 +4,13 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "dev": "elm make src/Main.elm --output=public/main.js && http-server public -p 5173 -H '{\"Cross-Origin-Opener-Policy\": \"same-origin\", \"Cross-Origin-Embedder-Policy\": \"require-corp\"}'",
+    "dev": "elm make src/Main.elm --output=public/main.js && node server.js",
     "build": "elm make src/Main.elm --output=public/main.js --optimize",
     "test": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.1",
-    "elm": "^0.19.1-6",
-    "http-server": "^14.1.1"
+    "elm": "^0.19.1-6"
   },
   "dependencies": {
     "@sqlite.org/sqlite-wasm": "^3.46.0-build1"

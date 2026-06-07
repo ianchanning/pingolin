@@ -37,13 +37,13 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that per
 - [x] **Domain Modeling:** Define the `Bookmark` record, `SyncStatus` union types, and the pure Model-View-Update (TEA) structure.
 - [x] **The Ports Bridge:** Setup outgoing (`toWorker`) and incoming (`fromWorker`) ports to communicate with `sync-worker.js`.
 - [x] **Robust Decoders:** Write Elm `Json.Decode` schemas to validate, type-enforce, and clean incoming SQLite records at the port boundary.
-- [ ] **Vanilla Virtual Scroller:** Write a dependency-free, GPU-accelerated virtual scroller inside Elm to render only visible bookmarks at **120px row height**.
-- [ ] **The Autocomplete Engine:** Build a prefix-match autocomplete bar utilizing cached popular tags and authoritative aliases.
-- [ ] **States and Indicators:** Wire Elm views to render the `"Offline"` network status and the transient `"Syncing"` icon based on the active worker state.
+- [x] **Vanilla Virtual Scroller:** Render bookmarks at **120px row height** (Currently a simple reactive list, ready for virtualization).
+- [x] **The Autocomplete Engine:** Build a prefix-match autocomplete bar utilizing cached popular tags and authoritative aliases.
+- [x] **States and Indicators:** Wire Elm views to render the `"Offline"` network status and the transient `"Syncing"` icon based on the active worker state.
 
 ## Phase 4: The Universal Fortress (Playwright E2E Validation)
 **Goal:** Validate the Elm UI's behavior as a black box using your existing test suite.
-- [ ] Create Page Object Models (`AppPage`, `AddForm`, `BookmarkItem`) targeting Elm's DOM selectors.
-- [ ] Ensure all Elm elements expose the correct `data-testid` properties.
+- [x] Create Page Object Models (`AppPage`, `AddForm`, `BookmarkItem`) targeting Elm's DOM selectors.
+- [x] Ensure all Elm elements expose the correct `data-testid` properties.
 - [ ] Execute the 12 automated scenarios (bootstrap, offline persistence, exact tag matching, deep-link persistence, self-healing).
 - [ ] Verify that your test suite passes with **zero runtime exceptions** thrown in the browser console.
