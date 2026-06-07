@@ -6,7 +6,7 @@ body {
   margin: 0;
   line-height: 1.5;
   font-family: Georgia, serif;
-  background-color: #fff;
+  background: #fff url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAAhCAYAAAAcTBGCAAAAI0lEQVQYV2P8/PnMfwYoYCSHc/ToWsoMwG3pvB3uCKNHOQwA7pJivwLO3TkAAAAASUVORK5CYII=) 0 100% repeat-x
 }
 
 #app {
