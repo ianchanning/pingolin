@@ -3,7 +3,7 @@ port module Main exposing (main)
 import Browser
 import Html exposing (Html, div, text, button, input, h1, img, h3, a)
 import Html.Attributes exposing (placeholder, value, type_, class, style, attribute, src, href, target)
-import Html.Events exposing (onClick, onInput)
+import Html.Events exposing (onClick, onInput, preventDefaultOn)
 import Json.Encode as Encode
 import Json.Decode as Decode exposing (Decoder)
 
@@ -346,7 +346,7 @@ view model =
                 text ""
             , div [ class "status-chamber" ]
                 [ div [ attribute "data-testid" "sync-status" ] 
-                    [ text ("STATE: " ++ model.status ++ " | POS: " ++ String.fromInt model.scrollTop ++ " | VIEW: " ++ String.fromInt model.viewportHeight ++ " | RANGE: " ++ String.fromInt (List.length model.bookmarks)) ]
+                    [ text ("STATE: " ++ model.status) ]
                 , if model.progress > 0 && model.progress < 1.0 then
                     div [ class "progress-bar", attribute "data-testid" "sync-progress" ] 
                         [ div [ class "progress-fill", style "width" (String.fromFloat (model.progress * 100) ++ "%") ] [] ]
@@ -379,7 +379,7 @@ viewVirtualList model =
                 |> List.indexedMap (\i b -> (startIndex + i, b))
     in
     div [ class "archive-scroll-container" ]
-        [ div [ class "archive-height-spacer", style "height" (String.fromInt containerHeight ++ "px"), style "position" "relative" ]
+        [ div [ class "archive-height-spacer", style "height" (String.fromInt containerHeight ++ "px") ]
             (List.map viewIndexedBookmark visibleBookmarks)
         ]
 
@@ -388,9 +388,7 @@ viewIndexedBookmark (index, b) =
     div 
         [ class "bookmark-shrine"
         , attribute "data-testid" "bookmark-item"
-        , style "height" (String.fromInt rowHeight ++ "px")
         , style "transform" ("translateY(" ++ String.fromInt (index * rowHeight) ++ "px)")
-        , style "will-change" "transform"
         ]
         [ if b.syncStatus /= Synchronized then
             div [ class "pending-icon", attribute "data-testid" "pending-icon" ] [ text "🔄" ]
@@ -398,10 +396,16 @@ viewIndexedBookmark (index, b) =
             text ""
         , h3 [] [ a [ href b.href, target "_blank" ] [ text b.description ] ]
         , div [ class "tags" ] 
-            [ Html.label [] [ text "Tags: " ]
-            , text (String.join ", " b.tags) 
-            ]
+            (Html.label [] [ text "Tags: " ] :: List.intersperse (text ", ") (List.map viewTag b.tags))
         ]
+
+viewTag : String -> Html Msg
+viewTag tag =
+    a 
+        [ href ("?q=#" ++ tag)
+        , preventDefaultOn "click" (Decode.succeed ( SetQuery ("#" ++ tag), True ))
+        ] 
+        [ text tag ]
 
 -- SUBSCRIPTIONS
 
