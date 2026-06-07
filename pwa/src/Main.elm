@@ -289,7 +289,7 @@ handleWorkerMsg msg model =
                 hydrated =
                     model.isHydrated || not (List.isEmpty bookmarks)
             in
-            ( { model | bookmarks = bookmarks, status = "Archive Online. " ++ String.fromInt (List.length bookmarks) ++ " records loaded.", isHydrated = hydrated, scrollTop = 0 }, Cmd.none )
+            ( { model | bookmarks = bookmarks, status = String.fromInt (List.length bookmarks), isHydrated = hydrated, scrollTop = 0 }, Cmd.none )
 
         TagSuggestionsMsg suggestions ->
             ( { model | tagSuggestions = suggestions }, Cmd.none )
@@ -316,7 +316,7 @@ view model =
     div [ class "pingolin-fortress" ]
         [ div [ attribute "id" "masthead" ]
             [ div [ class "top-bar" ] 
-                [ text (if model.isOnline then "ONLINE | STEEL & STONE" else "OFFLINE | CHAOS DETECTED") ]
+                [ text (if model.isOnline then "ONLINE" else "OFFLINE") ]
             , img [ src "/pangolin_trans.png", attribute "id" "masthead-logo" ] []
             , h1 [] [ text "pingolin" ]
             ]
@@ -329,6 +329,15 @@ view model =
                     ]
               else
                 text ""
+            , div [ class "status-chamber" ]
+                [ div [ attribute "data-testid" "sync-status" ] 
+                    [ text (model.status) ]
+                , if model.progress > 0 && model.progress < 1.0 then
+                    div [ class "progress-bar", attribute "data-testid" "sync-progress" ] 
+                        [ div [ class "progress-fill", style "width" (String.fromFloat (model.progress * 100) ++ "%") ] [] ]
+                  else
+                    text ""
+                ]
             , div [ class "search-chamber" ]
                 [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] []
                 , button [ attribute "id" "toggle-add-btn", onClick ToggleAddForm ] [ text "+" ]
@@ -344,15 +353,6 @@ view model =
                     ]
               else
                 text ""
-            , div [ class "status-chamber" ]
-                [ div [ attribute "data-testid" "sync-status" ] 
-                    [ text ("STATE: " ++ model.status) ]
-                , if model.progress > 0 && model.progress < 1.0 then
-                    div [ class "progress-bar", attribute "data-testid" "sync-progress" ] 
-                        [ div [ class "progress-fill", style "width" (String.fromFloat (model.progress * 100) ++ "%") ] [] ]
-                  else
-                    text ""
-                ]
             , viewVirtualList model
             ]
         ]

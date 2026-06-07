@@ -33,9 +33,9 @@
         }
         #masthead .top-bar {
             background: var(--green-bar);
-            color: #452;
+            color: var(--header-bg);
             height: 22px;
-            padding: 6px 10% 0;
+            padding: 3px 10% 3px;
             margin: 0;
             font-size: 0.85em;
             text-align: right;
@@ -52,6 +52,15 @@
             color: var(--fg);
             letter-spacing: -2px;
             font-weight: normal;
+            text-shadow: 
+                -1px -1px 0 var(--header-bg),  
+                 1px -1px 0 var(--header-bg),
+                -1px  1px 0 var(--header-bg),
+                 1px  1px 0 var(--header-bg),
+                -3px -3px 0 var(--border),
+                 3px -3px 0 var(--border),
+                -3px  3px 0 var(--border),
+                 3px  3px 0 var(--border);
         }
         #masthead-logo {
             position: absolute;
@@ -61,7 +70,6 @@
             z-index: 10;
         }
 
-        
         .pingolin-fortress { 
             padding: 0; 
             display: flex; 
@@ -111,13 +119,11 @@
         button:hover { filter: brightness(1.1); }
         
         .status-chamber { 
-            margin-bottom: 1rem; 
-            padding: 0.5rem; 
-            border: 1px solid var(--border); 
-            font-size: 0.75em; 
-            background: #F2F2DE; 
-            flex-shrink: 0; 
-            color: #660;
+            font-size: 0.75em;
+            flex-shrink: 0;
+            color: var(--fg);
+            font-weight: bold;
+            font-family: Georgia, serif;
         }
         .progress-bar { height: 4px; background: #DDD; margin-top: 0.5rem; position: relative; overflow: hidden; }
         .progress-fill { position: absolute; height: 100%; background: var(--green-bar); transition: width 0.3s ease-out; }
