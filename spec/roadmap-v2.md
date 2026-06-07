@@ -1,39 +1,49 @@
-# Pingolin: Steel & Stone Architecture (30Y Durability)
+# Implementation Plan: Brutally Simple Pinboard PWA (Elm + SQLite WASM)
 
-## Core Architecture
-
-### 1. The Bridge (Cloudflare Worker Proxy)
-- **Role:** CORS-free gateway to `api.pinboard.in`.
-- **Hardening:** Forces `User-Agent: PinboardPWA/1.0` and implements XML-to-JSON alchemy to bypass unstable origin serializers.
-- **Security:** Transparent header forwarding for `auth_token`.
-
-### 2. The Engine (Background Web Worker)
-- **Storage:** `sqlite-wasm` utilizing **OPFS** (Origin Private File System) for durable, local-first persistence.
-- **Search:** FTS5 Virtual Table for fuzzy search + Heuristic SQL prefix-matching for exact tag queries (The Punctuation Paradox Fix).
-- **Isolation:** Message-passing bridge with request IDs and persistent response mapping.
-
-### 3. The Sync Orchestrator (Eventual Consistency)
-- **Bootstrap:** "The Big Pull" (Chunked ingestion of 22,000+ records).
-- **Heartbeat:** Automatic polling loop with configurable intervals and rate-limit backoff.
-- **The Dates Hack (Delta Sync):** 
-    - Date-count sentinel comparison (`/posts/dates`) to detect invisible deletions.
-    - Targeted reconciliation via `/posts/get?dt=...` for mismatched buckets.
-- **The Upstream Flush:** Local-first writes (`PENDING_INSERT/UPDATE`) pushed with a mandatory 3s throttle.
-- **Self-Healing:** Automatic sync-handshake recovery for "Zombie Databases" (data exists but sentinel is missing).
-
-### 4. The "Brutal" UI (Virtualized & Reactive)
-- **Rendering:** requestAnimationFrame + GPU-accelerated transforms for 60fps virtualized scrolling.
-- **State:** Search-aware refreshes (syncing does not clear active filters).
-- **Intelligence:** Prefix-match autocomplete engine leveraging cached popular tags and authoritative aliases.
-
-### 5. The Universal Fortress (E2E Validation)
-- **Tooling:** Playwright-based behavior-driven integration suite.
-- **Contract:** Verifies the app as a "Black Box" using `data-testid` locators.
-- **Rituals:** 12 automated scenarios covering bootstrap, offline persistence, deletion reconciliation, and deep-link reliability.
+## Overview
+A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that performantly handles 22,000+ bookmarks using local-first SQLite, a background Web Worker, and an Elm presentation layer.
 
 ---
 
-## Technical Debt & Future Map
-- **Heuristic Tagging:** Expand co-occurrence logic (History-based co-occurrence is currently lean).
-- **Offline Hardening:** Service Worker lifecycle refinements for faster asset updates.
-- **Migration Path:** The Fortress is ready for a potential PureScript or ClojureScript migration of the UI thread.
+## Phase 0: The Bridge (Cloudflare Worker Proxy)
+**Goal:** Establish a CORS-free, stable connection to the Pinboard API.
+- [x] Create a minimal Cloudflare Worker to proxy `api.pinboard.in`.
+- [x] Implement transparent header forwarding (Pass through `auth_token`).
+- [x] **API Knowledge Fix:** Force a standard `User-Agent` (`PinboardPWA/1.0`) to avoid 500 errors.
+- [x] Implement rate-limit protection (detect 429 and pass it through).
+- [ ] **XML Alchemy:** Parse XML returned from `/posts/dates` into clean JSON on the edge to bypass origin-side serialization bugs.
+
+## Phase 1: The Engine (Web Worker & SQLite)
+**Goal:** Setup the persistent local storage layer using high-performance OPFS.
+- [x] Initialize `sqlite-wasm` inside a dedicated background Web Worker (`sync-worker.js`).
+- [x] Setup **OPFS** (Origin Private File System) for durable persistence.
+- [x] Implement the Relational Schema (`bookmarks`, `tag_aliases`, `metadata`).
+- [x] Implement the **FTS5 Virtual Table** and triggers for lightning-fast search.
+- [ ] **The Punctuation Paradox Fix:** Add the `#` prefix search bypass inside the worker's query handler to execute space-padded SQL relational exact-tag matching.
+
+## Phase 2: The Sync Orchestrator (Eventual Consistency)
+**Goal:** Implement the "Dates Hack" sync algorithm in the Web Worker.
+- [ ] **Bootstrap:** Implement chunked batch ingestion of 22,000+ bookmarks inside a single SQLite transaction.
+- [ ] **Heartbeat:** Setup a passive polling loop that monitors `/posts/update`.
+- [ ] **Fast-Path Delta:** Implement `/posts/all?fromdt=last_sync` to pull additions and modifications instantly.
+- [ ] **The Dates Hack (Deletions):** Compare local date counts (`GROUP BY date`) against remote `/posts/dates` distribution to identify invisible deletes.
+- [ ] **Targeted Reconcile:** Fetch mismatched date buckets via `/posts/get?dt=...` and prune local deletes.
+- [ ] **The Upstream Flush:** Implement a local write queue (`PENDING_INSERT/UPDATE/DELETE`) with a mandatory 3-5 second api throttle.
+- [ ] **Self-Healing:** Implement sync-handshake recovery for "Zombie Databases" (auto-adopt timestamp of latest local bookmark if metadata sentinel is lost).
+
+## Phase 3: The "Brutal" UI (Elm Presentation Layer)
+**Goal:** Build the unidirectional, crash-free presentation layer using Elm.
+- [ ] **Workspace Setup:** Configure `package.json`, `Main.elm`, and `vite.config.js` with the required COOP/COEP headers to enable OPFS.
+- [ ] **Domain Modeling:** Define the `Bookmark` record, `SyncStatus` union types, and the pure Model-View-Update (TEA) structure.
+- [ ] **The Ports Bridge:** Setup outgoing (`toWorker`) and incoming (`fromWorker`) ports to communicate with `sync-worker.js`.
+- [ ] **Robust Decoders:** Write Elm `Json.Decode` schemas to validate, type-enforce, and clean incoming SQLite records at the port boundary.
+- [ ] **Vanilla Virtual Scroller:** Write a dependency-free, GPU-accelerated virtual scroller inside Elm to render only visible bookmarks at **120px row height**.
+- [ ] **The Autocomplete Engine:** Build a prefix-match autocomplete bar utilizing cached popular tags and authoritative aliases.
+- [ ] **States and Indicators:** Wire Elm views to render the `"Offline"` network status and the transient `"Syncing"` icon based on the active worker state.
+
+## Phase 4: The Universal Fortress (Playwright E2E Validation)
+**Goal:** Validate the Elm UI's behavior as a black box using your existing test suite.
+- [ ] Create Page Object Models (`AppPage`, `AddForm`, `BookmarkItem`) targeting Elm's DOM selectors.
+- [ ] Ensure all Elm elements expose the correct `data-testid` properties.
+- [ ] Execute the 12 automated scenarios (bootstrap, offline persistence, exact tag matching, deep-link persistence, self-healing).
+- [ ] Verify that your test suite passes with **zero runtime exceptions** thrown in the browser console.
