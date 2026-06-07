@@ -347,7 +347,6 @@ self.onmessage = async (e) => {
 
         const sortedTags = Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
-          .slice(0, 200)
           .map(e => e[0]);
 
         self.postMessage({ type: 'QUERY_RESULTS', payload: sortedTags, id });
@@ -442,38 +441,6 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
-
-      case 'SUGGEST_TAGS_HISTORY': {
-        // Payload: query string from title/url
-        const historyResults = db.exec({
-          sql: `
-            SELECT b.tags FROM bookmarks_fts f
-            JOIN bookmarks b ON f.rowid = b.rowid
-            WHERE bookmarks_fts MATCH ?
-            LIMIT 50
-          `,
-          bind: [payload],
-          returnValue: 'resultRows',
-          rowMode: 'object'
-        });
-
-        const tagCounts: Record<string, number> = {};
-        for (const row of historyResults) {
-          const tags = (row.tags || '').split(' ').filter(Boolean);
-          for (const t of tags) {
-            tagCounts[t] = (tagCounts[t] || 0) + 1;
-          }
-        }
-
-        // Return top 5 tags sorted by frequency
-        const topTags = Object.entries(tagCounts)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-          .map(entry => entry[0]);
-
-        self.postMessage({ type: 'QUERY_RESULTS', payload: topTags, id });
-        break;
-      }
 
       case 'DEBUG_CLEAR_DB':
         db.transaction((db: any) => {

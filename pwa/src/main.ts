@@ -63,6 +63,21 @@ class DatabaseBridge {
     return this.send('GET_POPULAR_TAGS');
   }
 
+  async getTagAliases(): Promise<any[]> {
+    return this.send('GET_TAG_ALIASES');
+  }
+
+  async upsertTagAlias(keyword: string, mapped_tag: string) {
+    const res = await this.send('UPSERT_TAG_ALIAS', { keyword, mapped_tag });
+    // Invalidate local cache
+    const state = (window as any).heuristicState;
+    if (state) {
+      state.aliases = [];
+      state.aliasPromise = null;
+    }
+    return res;
+  }
+
   async upsertBatch(bookmarks: any[]) {
     return this.send('UPSERT_BATCH', bookmarks);
   }
@@ -117,10 +132,6 @@ class DatabaseBridge {
       this.pendingRequests.set(id, { resolve, reject, onProgress });
       this.worker.postMessage({ type: 'START_HYDRATION', payload: { proxyUrl, authToken }, id });
     });
-  }
-
-  async suggestTags(query: string): Promise<string[]> {
-    return this.send('SUGGEST_TAGS_HISTORY', query);
   }
 
   async send(type: string, payload?: any): Promise<any> {
@@ -244,6 +255,8 @@ class SyncOrchestrator {
   private syncIndicator: HTMLElement;
   private timerHandle: any = null;
   private intervalMs: number = 60000;
+  private debugCap: number = 221;
+  private throttleMs: number = 5000;
 
   constructor(syncIndicatorId: string) {
     this.syncIndicator = document.getElementById(syncIndicatorId)!;
@@ -252,6 +265,16 @@ class SyncOrchestrator {
   setInterval(ms: number) {
     this.intervalMs = ms;
     console.log(`[Sync] Interval updated to ${ms}ms`);
+  }
+
+  setDebugCap(count: number) {
+    this.debugCap = count;
+    console.log(`[Sync] Debug Cap updated to ${count}`);
+  }
+
+  setThrottle(ms: number) {
+    this.throttleMs = ms;
+    console.log(`[Sync] Throttle updated to ${ms}ms`);
   }
 
   setAuthToken(token: string) {
@@ -344,7 +367,7 @@ class SyncOrchestrator {
 
       // DEBUG: If local count is small (our cap), we skip Path B (Deletions)
       // because it will try to reconcile the other 22,000+ server bookmarks one by one!
-      if (count <= 221) {
+      if (count <= this.debugCap) {
         console.warn(`[Sync] Debug Cap Detected (${count}). Skipping Deletion Check to prevent API thrashing.`);
         // We still run Path A (Additions/Edits)
         await this.fetchServerAdditions();
@@ -566,15 +589,19 @@ class SyncOrchestrator {
         for (const date of mismatches) {
           console.log(`[Sync] Sentinel: Reconciling bucket ${date}`);
           // Throttle between date buckets
-          await this.wait(5000);
+          await this.wait(this.throttleMs);
           const getUrl = `${this.proxyUrl}/posts/get?auth_token=${this.authToken}&dt=${date}&format=json`;
           const getResp = await fetch(getUrl, { cache: 'no-store' });
           if (getResp.ok) {
             const data = await getResp.json();
-            const authoritativeBookmarks = data.posts || [];
+            // Pinboard API can return an array directly OR nested under 'posts' depending on format/legacy
+            const authoritativeBookmarks = Array.isArray(data) ? data : (data.posts || []);
             console.log(`[Sync] Sentinel: Reconciling ${authoritativeBookmarks.length} records for ${date}`);
             await db.reconcileDate(date, authoritativeBookmarks);
             await db.upsertBatch(authoritativeBookmarks);
+          } else {
+            console.error(`[Sync] Sentinel: Fetch failed for bucket ${date}: ${getResp.status}`);
+            return false; // Fail the ritual
           }
         }
         return true;
@@ -644,8 +671,8 @@ class SyncOrchestrator {
           }
         }
 
-        // Respect 5-second delay between write-intensive requests
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Respect delay between write-intensive requests
+        await new Promise(resolve => setTimeout(resolve, this.throttleMs));
 
       } catch (err) {
         console.error(`[Sync] Failed to push ${b.href}:`, err);
@@ -673,21 +700,54 @@ const sync = new SyncOrchestrator('sync-indicator');
 
 let lastSentinelRunTime = 0;
 
-let popularTagsCache: string[] = [];
+(window as any).heuristicState = {
+  popularTags: [] as string[],
+  aliases: [] as any[],
+  aliasPromise: null as Promise<any[]> | null
+};
 
 const populateTagSuggestions = async (inputVal: string = '') => {
-  if (popularTagsCache.length === 0) {
-    popularTagsCache = await db.getPopularTags();
+  const state = (window as any).heuristicState;
+
+  if (state.popularTags.length === 0) {
+    state.popularTags = await db.getPopularTags();
+  }
+  
+  if (state.aliases.length === 0) {
+    if (!state.aliasPromise) {
+      state.aliasPromise = db.getTagAliases().then(aliases => {
+        state.aliases = aliases;
+        return aliases;
+      });
+    }
+    await state.aliasPromise;
   }
 
   const datalist = document.getElementById('tag-suggestions')!;
   if (!datalist) return;
 
-  // Extract prefix (everything before the last space)
-  const lastSpaceIndex = inputVal.lastIndexOf(' ');
-  const prefix = lastSpaceIndex === -1 ? '' : inputVal.substring(0, lastSpaceIndex + 1);
+  // Extract current word (everything after the last space, trimmed)
+  const trimmedInput = inputVal.trim();
+  const lastSpaceIndex = trimmedInput.lastIndexOf(' ');
+  const currentWord = trimmedInput.substring(lastSpaceIndex + 1).toLowerCase();
+  
+  const displaySpaceIndex = inputVal.lastIndexOf(' ');
+  const prefix = displaySpaceIndex === -1 ? '' : inputVal.substring(0, displaySpaceIndex + 1);
 
-  datalist.innerHTML = popularTagsCache.map(t => `<option value="${prefix}${t}">`).join('');
+  // Check aliases for current word
+  const aliasSuggestions = currentWord ? state.aliases
+    .filter((a: any) => a.keyword.toLowerCase() === currentWord)
+    .map((a: any) => a.mapped_tag) : [];
+
+  // Prefix Match Heuristic: Filter popular tags by the current word being typed
+  const filteredPopular = currentWord 
+    ? state.popularTags.filter((t: string) => t.toLowerCase().startsWith(currentWord))
+    : state.popularTags;
+
+  // Merge: Aliases first, then filtered popular tags
+  const merged = [...new Set([...aliasSuggestions, ...filteredPopular])];
+
+  datalist.innerHTML = merged.map(t => `<option value="${prefix}${t}">`).join('');
 };
 
 const initApp = async () => {
@@ -806,7 +866,12 @@ const initApp = async () => {
 
   // Offline detection
   const updateOnlineStatus = () => {
-    offlineIndicator.style.display = navigator.onLine ? 'none' : 'block';
+    const isOffline = !navigator.onLine;
+    offlineIndicator.style.display = isOffline ? 'block' : 'none';
+    if (!isOffline) {
+      console.log('[Sync] Browser back online. Triggering flush...');
+      sync.trigger();
+    }
   };
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
@@ -870,35 +935,8 @@ const initApp = async () => {
     const newTitleInput = document.getElementById('new-title') as HTMLInputElement;
     const newTagsInput = document.getElementById('new-tags') as HTMLInputElement;
 
-    newTagsInput.oninput = () => {
-      populateTagSuggestions(newTagsInput.value);
-    };
-
-    const updateTagSuggestions = async () => {
-      const title = newTitleInput.value.trim();
-      if (title.length < 3) return;
-      
-      try {
-        const historyTags = await db.suggestTags(title);
-        if (historyTags.length > 0) {
-          // Merge history tags with popular tags, putting history first
-          const merged = [...new Set([...historyTags, ...popularTagsCache])].slice(0, 100);
-          const datalist = document.getElementById('tag-suggestions')!;
-          const inputVal = newTagsInput.value;
-          const lastSpaceIndex = inputVal.lastIndexOf(' ');
-          const prefix = lastSpaceIndex === -1 ? '' : inputVal.substring(0, lastSpaceIndex + 1);
-          datalist.innerHTML = merged.map(t => `<option value="${prefix}${t}">`).join('');
-        }
-      } catch (e) {
-        console.warn('[UI] Tag suggestion failed:', e);
-      }
-    };
-
-    newTitleInput.onblur = updateTagSuggestions;
-    newTitleInput.oninput = () => {
-      // Debounce suggestions
-      clearTimeout((window as any).suggestionTimeout);
-      (window as any).suggestionTimeout = setTimeout(updateTagSuggestions, 500);
+    newTagsInput.oninput = async () => {
+      await populateTagSuggestions(newTagsInput.value);
     };
 
     resetButton.onclick = async () => {
@@ -974,7 +1012,12 @@ const initApp = async () => {
         sync.startLoop();
 
         await refreshData();
-        popularTagsCache = [];
+        const state = (window as any).heuristicState;
+        if (state) {
+          state.popularTags = [];
+          state.aliases = [];
+          state.aliasPromise = null;
+        }
         await populateTagSuggestions();
         } catch (err) {
         console.error('Sync Failed:', err);

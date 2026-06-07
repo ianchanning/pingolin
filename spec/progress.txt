@@ -74,4 +74,5 @@
 - [x] Execute Scenario 6-9 (The Offline & Conflict Rituals).
 - [x] Execute Scenario 11-12 (The Persistence & Deep Link Rituals).
 - [x] Execute Scenario 13 (The Heartbeat Ritual / Autosync).
+- [x] Execute Scenario 14-15 (Self-Healing & The Dates Hack).
 

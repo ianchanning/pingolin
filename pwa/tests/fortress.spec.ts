@@ -11,7 +11,7 @@ test.describe('The Universal Fortress', () => {
   test('Smoke Test: App Loads and shows Login', async ({ page }) => {
     const app = new AppPage(page);
     await app.goto();
-    
+
     await expect(app.loginContainer).toBeVisible();
     await expect(app.authTokenInput).toBeVisible();
     await expect(app.syncButton).toBeVisible();
@@ -19,13 +19,13 @@ test.describe('The Universal Fortress', () => {
 
   test('Scenario 1: The First Awakening (Bootstrap Sync Attempt)', async ({ page }) => {
     const app = new AppPage(page);
-    
+
     // Mock Proxy calls
     await app.mockProxy('/posts/recent', [
       { href: 'https://example.com/1', description: 'Bookmark 1', tags: 'tag1', time: '2023-10-01T12:00:00Z' },
       { href: 'https://example.com/2', description: 'Bookmark 2', tags: 'tag2', time: '2023-10-01T12:01:00Z' },
     ]);
-    
+
     // Mock /posts/all as well since worker.ts currently uses it for hydration
     await app.mockProxy('/posts/all', [
       { href: 'https://example.com/1', description: 'Bookmark 1', tags: 'tag1', time: '2023-10-01T12:00:00Z' },
@@ -44,7 +44,7 @@ test.describe('The Universal Fortress', () => {
   test('Scenario 3: The Punctuation Paradox (Exact Tag Matching)', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-punct-${Math.random().toString(36).substring(7)}.db`;
-    
+
     // Rigorous Data: Testing space-padding and complex delimiters
     const bookmarks = [
       { href: '1', description: 'Target', tags: 'subject:cs.AI tui', time: '2023-10-01T12:00:00Z' },
@@ -64,7 +64,7 @@ test.describe('The Universal Fortress', () => {
 
     // 1. Perform Exact Tag Search
     await app.search('#subject:cs.AI');
-    
+
     // Assert: Only exactly 'subject:cs.AI' should match due to our space-padding heuristic
     const list = page.getByTestId('bookmark-item');
     await expect(list).toHaveCount(1);
@@ -90,7 +90,7 @@ test.describe('The Universal Fortress', () => {
 
     await app.goto();
     await app.login('test:TOKEN');
-    
+
     // Wait for setup to complete and UI to unlock
     await expect(app.toggleAddButton).toBeVisible({ timeout: 15000 });
     await expect(app.loginContainer).not.toBeVisible();
@@ -142,16 +142,11 @@ test.describe('The Universal Fortress', () => {
 
     // 2. Go Online and trigger sync
     await context.setOffline(false);
-    // Sync loop should trigger automatically or we can trigger it via another add/delete
-    // But here we'll just wait for the next loop or force it if we had a trigger
-    
-    // In main.ts, addButton.onclick calls sync.trigger()
-    // So it should have already triggered, but it failed because we were offline.
-    // When we go online, the next loop (60s) or a manual trigger will catch it.
-    
+    await page.evaluate(() => (window as any).sync.setThrottle(100));
+
     // Let's perform another search to trigger a refresh and check if loop starts
     await app.search('Reconnect');
-    
+
     // Assert that the pending icon disappears
     // Note: main.ts has a 5s wait between pushes
     await expect(page.getByTestId('pending-icon')).not.toBeVisible({ timeout: 15000 });
@@ -159,7 +154,7 @@ test.describe('The Universal Fortress', () => {
 
   test('Scenario 11: Search Persistence during Sync', async ({ page }) => {
     const app = new AppPage(page);
-    
+
     // Initial State: 2 bookmarks
     const initialBookmarks = [
       { href: 'https://a.com', description: 'Apple', tags: 'fruit', time: '2023-10-01T12:00:00Z' },
@@ -182,7 +177,7 @@ test.describe('The Universal Fortress', () => {
 
     // 2. Mock a NEW bookmark arriving via delta sync
     const newBookmark = { href: 'https://c.com', description: 'Cherry', tags: 'fruit', time: '2023-10-01T12:02:00Z' };
-    
+
     // We need /posts/update to return a NEWER timestamp to trigger the delta fetch in the loop
     // Note: We use a new mock route that will override the previous ones
     await app.mockProxy('/posts/update', { update_time: '2023-10-01T14:00:00Z' });
@@ -201,7 +196,7 @@ test.describe('The Universal Fortress', () => {
   test('Scenario 12: Deep Link Refresh (Persistence)', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-deep-${Math.random().toString(36).substring(7)}.db`;
-    
+
     const bookmarks = [
       { href: 'https://year.com', description: 'Yearly Review', tags: 'year', time: '2023-10-01T12:00:00Z' },
       { href: 'https://other.com', description: 'Other', tags: 'other', time: '2023-10-01T12:01:00Z' },
@@ -225,7 +220,7 @@ test.describe('The Universal Fortress', () => {
     // 3. REFRESH the page with the query in URL
     // We need to keep the dbName so it doesn't create a fresh empty DB
     await page.goto(`/?dbName=${dbName}&q=year`);
-    
+
     // 4. Assert that the search is still active and results are visible
     await expect(app.searchInput).toHaveValue('year');
     const list = page.getByTestId('bookmark-item');
@@ -235,7 +230,7 @@ test.describe('The Universal Fortress', () => {
 
   test('Scenario 13: The Heartbeat Ritual (Autosync Verification)', async ({ page }) => {
     const app = new AppPage(page);
-    
+
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [
       { href: 'https://pulse.com', description: 'Pulse 1', tags: 'test', time: '2023-10-01T12:00:00Z' }
@@ -255,7 +250,7 @@ test.describe('The Universal Fortress', () => {
 
     // 2. Mock a NEW bookmark appearing on the server
     const newBookmark = { href: 'https://pulse2.com', description: 'Pulse 2', tags: 'test', time: '2023-10-01T12:05:00Z' };
-    
+
     // We need update_time to change to trigger delta sync
     await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
     await app.mockProxy('/posts/all', [newBookmark]);
@@ -270,20 +265,20 @@ test.describe('The Universal Fortress', () => {
   test('Scenario 14: The Zombie Database (Self-Healing Sync)', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-zombie-${Math.random().toString(36).substring(7)}.db`;
-    
+
     // 1. Setup a "Zombie" state: Data exists, but NO sync sentinel
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [
       { href: 'https://zombie.com', description: 'Zombie Bookmark', tags: 'undead', time: '2023-10-01T12:00:00Z' }
     ]);
-    
+
     // We mock /posts/update to see if the app tries to sync after healing
     await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
-    
+
     // Wait for initial sync to "complete" (ingest data)
     await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 10000 });
 
@@ -300,7 +295,7 @@ test.describe('The Universal Fortress', () => {
 
     // Actually, let's just mock the INIT response to return bookmarks but no sentinel
     // But our current system is local-first. 
-    
+
     // Better: We'll forge a database with a script or evaluate that puts it in this state.
     await page.evaluate(async () => {
       const db = (window as any).db;
@@ -312,7 +307,7 @@ test.describe('The Universal Fortress', () => {
     // 3. Page reloads. Database has 1 bookmark, but no sentinel.
     // The logs in the prompt show: "[Sync] Loop aborted: No previous sync found."
     // We want to ASSERT that the sync loop RECOVERS and fetches updates.
-    
+
     // Mock a NEW bookmark that only a functioning sync loop would catch
     const revivalBookmark = { href: 'https://revival.com', description: 'Revived!', tags: 'life', time: '2023-10-01T14:00:00Z' };
     await app.mockProxy('/posts/all', [revivalBookmark]);
@@ -322,5 +317,112 @@ test.describe('The Universal Fortress', () => {
     const list = page.getByTestId('bookmark-item');
     await expect(list).toHaveCount(2, { timeout: 20000 });
     await expect(list.first()).toContainText('Revived!');
+  });
+
+  test('Scenario 15: The Deletion Exorcism (The Dates Hack)', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-dates-${Math.random().toString(36).substring(7)}.db`;
+
+    const date = '2023-10-01';
+    const b1 = { href: 'https://keep.com', description: 'Keep Me', tags: 'test', time: `${date}T12:00:00Z` };
+    const b2 = { href: 'https://delete.com', description: 'Delete Me', tags: 'test', time: `${date}T13:00:00Z` };
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', [b1, b2]);
+    await app.mockProxy('/posts/update', { update_time: `${date}T14:00:00Z` });
+
+    // Initial Load: Ingest both bookmarks
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(2, { timeout: 15000 });
+
+    // 1. Mock a DELETION on the server
+    // /posts/dates will show only 1 bookmark for this date (Local has 2)
+    await app.mockProxy('/posts/dates', { dates: { [date]: '1' } });
+
+    // /posts/get?dt=... will return only the surviving bookmark
+    // We use a broader route to avoid issues with parameter ordering
+    await app.mockProxy('/posts/get', [b1]);
+
+    // 2. Accelerate the heartbeat and trigger sync
+    await page.evaluate(() => {
+      (window as any).sync.setInterval(2000);
+      (window as any).sync.setDebugCap(0); // Force Deletion Check
+      (window as any).sync.setThrottle(100); // Speed up reconciliation
+      (window as any).sync.startLoop();
+    });
+
+    // 3. Assert that the ghost record (b2) is pruned
+    // The list count should drop to 1
+    const list = page.getByTestId('bookmark-item');
+    await expect(list).toHaveCount(1, { timeout: 20000 });
+    await expect(list).toContainText('Keep Me');
+    await expect(list).not.toContainText('Delete Me');
+  });
+
+  test('Scenario 16: Tag Rename Workaround (Atomic Chain)', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-rename-${Math.random().toString(36).substring(7)}.db`;
+
+    const bookmark = { href: 'https://rename.com', description: 'Rename Me', tags: 'old-tag other', time: '2023-10-01T12:00:00Z' };
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', [bookmark]);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    // Mocks for the workaround steps
+    await app.mockProxy('/posts/add', { result_code: 'done' });
+    await app.mockProxy('/tags/delete', { result_code: 'done' });
+
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 10000 });
+
+    // 1. Initiate Rename Workaround
+    await page.evaluate(async () => {
+      (window as any).sync.setThrottle(100); // Speed up
+      await (window as any).sync.renameTag('old-tag', 'new-tag');
+    });
+
+    const list = page.getByTestId('bookmark-item');
+    await expect(list).toContainText('new-tag');
+    await expect(list).not.toContainText('old-tag');
+  });
+
+  test('Scenario 17: Simplified Tag Autocomplete', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-heur-${Math.random().toString(36).substring(7)}.db`;
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', [
+      { href: 'https://example.com/1', description: 'Existing', tags: 'rust programming', time: '2023-10-01T12:00:00Z' }
+    ]);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 10000 });
+
+    // 1. Setup Alias: rust -> system
+    await page.evaluate(async () => {
+      const db = (window as any).db;
+      await db.upsertTagAlias('rust', 'system');
+    });
+
+    // 2. Trigger Add Form and type "ru"
+    await app.toggleAddButton.click();
+    const tagsInput = page.getByTestId('new-tags');
+    await tagsInput.click();
+    await tagsInput.type('ru');
+
+    // 3. Assert suggestions include Prefix-matched "rust" and the Alias "system" (on full word)
+    const datalist = page.locator('#tag-suggestions');
+    await expect(datalist.locator('option[value$="rust"]')).toBeAttached({ timeout: 10000 });
+
+    // Type the full word to trigger alias
+    await tagsInput.type('st');
+    await expect(datalist.locator('option[value$="system"]')).toBeAttached();
   });
 });

@@ -129,6 +129,61 @@ We intercept all calls to the Cloudflare Proxy (`/api/*`) using Playwright's `pa
 - **Given:** User navigates to `/?q=%23coding`.
 - **Assertions:** `[data-testid="search-input"]` is pre-filled with `#coding` and list is filtered.
 
+### Scenario 14: The Zombie Database (Self-Healing Sync)
+- **Objective:** Verify that a database with bookmarks but no sync sentinel automatically heals itself.
+- **Given:** Local SQLite has 1+ bookmarks, but `last_full_sync_time` is missing from metadata.
+- **When:** `startLoop()` is called.
+- **Then:**
+    1. App detects "Zombie" state.
+    2. App fetches the timestamp of the latest local bookmark.
+    3. App sets `last_full_sync_time` to that timestamp.
+    4. Sync loop resumes and successfully fetches newer items.
+
+### Scenario 15: The Deletion Exorcism (The Dates Hack)
+- **Objective:** Verify that server-side deletions are detected and pruned via date-count mismatches.
+- **Given:** Local state has 2 bookmarks on `2023-10-01`.
+- **When:** Mock `/posts/dates` returns a count of `1` for `2023-10-01`.
+- **Then:**
+    1. App identifies the mismatch.
+    2. App calls `/posts/get?dt=2023-10-01`.
+    3. App identifies the missing record and deletes it from local SQLite.
+    4. UI count updates to 1.
+
+### Scenario 16: Tag Rename Workaround (Atomic Chain)
+- **Objective:** Verify the multi-step "Add New + Delete Old" workaround for broken tag renames.
+- **Given:** Bookmark A has tag `old-tag`.
+- **When:** User renames `old-tag` to `new-tag`.
+- **Then:**
+    1. Local record is updated to `new-tag`.
+    2. Sync loop pushes the update to server via `/posts/add`.
+    3. Sync loop calls `/tags/delete?tag=old-tag`.
+    4. Both steps complete, and record is marked `SYNCHRONIZED`.
+
+### Scenario 17: Heuristic Tagging (The Mycelium)
+- **Objective:** Verify co-occurrence and alias-based tag suggestions.
+- **Given:** `tag_aliases` maps `rust` -> `programming`.
+- **When:** User types `https://rust-lang.org` into the Add Form.
+- **Then:**
+    1. `[data-testid="tag-suggestions"]` includes `programming`.
+    2. If the user previously used `rust` with `performance`, `performance` also appears.
+
+### Scenario 18: Parallel Bridge Stability (Concurrent Pressure)
+- **Objective:** Verify that a slow sync doesn't block UI requests.
+- **Given:** A hydration ritual is currently in progress (simulated slow response).
+- **When:** User performs a search or adds a local bookmark.
+- **Then:**
+    1. The UI request is dispatched with a unique ID.
+    2. The Worker processes the UI request *during* the sync (if possible) or immediately after, without the bridge hanging.
+    3. UI remains responsive.
+
+### Scenario 19: Proxy Alchemy (XML Fallback)
+- **Objective:** Verify that the app survives a 0-byte JSON response from the server.
+- **Given:** Server returns 200 OK but an empty body for `/posts/all`.
+- **When:** Sync loop triggers.
+- **Then:**
+    1. The Proxy (simulated) falls back to XML or the client handles the error gracefully.
+    2. The app does not crash or wipe the local database.
+
 ---
 
 ## 5. Success Metrics
