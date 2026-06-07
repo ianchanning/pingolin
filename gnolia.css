@@ -1,0 +1,1725 @@
+body {
+	font: 0.85em "Lucida Grande", Arial, Helvetica, sans-serif;
+	line-height: 1.2em;
+	color: #330;
+	background: #FFF url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAAhCAYAAAAcTBGCAAAAI0lEQVQYV2P8/PnMfwYoYCSHc/ToWsoMwG3pvB3uCKNHOQwA7pJivwLO3TkAAAAASUVORK5CYII=) 0 100% repeat-x;
+}
+	
+a:link {
+	color: #369;
+}
+
+a:visited {
+	color: #369;
+}
+
+a:hover {
+	color: #69C;
+}
+
+a {
+	text-decoration: none;
+}
+
+a img { border: 0; }
+
+/* redefining strong as bold. gets removed by reset.css */
+strong {
+  font-style: bold;
+}
+
+.more {
+	font: bold 0.75em "Lucida Grande", Arial, Helvetica, sans-serif;
+	text-transform: uppercase;
+}
+
+/* TOOLTIP - see /javascripts/tooltip.js */
+
+#tooltip {
+	color: #333;
+	width: 300px;
+	border: 1px solid #70704c;
+	padding: 3px;
+	background-color: #f2f2de;
+	font: normal 11px arial,helvetica,sans-serif;
+}
+
+#tooltip p {
+	margin: 0;
+}
+
+/* NAVIGATION */
+
+#skip {
+	position: absolute;
+	left: -9000px;
+}
+
+#navigation {
+	padding: 0;
+	margin: 0;
+	list-style: none;
+}
+
+#navigation li {
+	float: left;
+	position: relative;
+	border-left: 1px solid #330;
+	padding: 0;
+	margin: 0;
+}
+
+#navigation li.first {
+	border-left: none;
+}
+
+#navigation li a {
+	font: bold 0.85em/14px "Lucida Grande", Helvetica, Arial, sans-serif;
+	text-transform: uppercase;
+	padding: 0 1em;
+	display: block;
+}
+
+#navigation li a span {
+	padding-right: 1em;
+	background: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/menu/menu_arrow.gif) no-repeat 100% 4px;
+}
+
+#navigation li div {
+	background-color: #eee;
+	position: absolute;
+	top: 100%;
+	left: -1px;
+	z-index: 10000;
+	padding: 0;
+}
+
+#navigation li div div.drop-shadow {
+	position: absolute;
+	background: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/shadow.png) no-repeat bottom right;
+	top: 6px;
+	left: 6px;
+	z-index: 9999;
+	height: 100%;
+	width: 100%;
+}
+
+#navigation li.first div {
+	left: 0;
+}
+
+#navigation li div ul {
+	border: 1px solid #bbb;
+	border-bottom-color: #777;
+	border-right-color: #777;
+	border-top: none;
+}
+
+#navigation li div ul.first {
+	border-top: 1px solid #bbb;
+}
+
+#navigation li div ul li {
+	z-index: 10000; /* Firefox goes nuts without this */
+	float: none;
+	border: none;
+}
+
+#navigation li div ul li a {
+	font: normal 0.8em/1 "Lucida Grande", Helvetica, Arial, sans-serif;
+	color: #000;
+	text-decoration: none;
+	text-transform: none;
+	display: block;
+	padding: 0 8px;
+	height: 20px;
+	line-height: 20px !important; /* Safari fix */
+	background-color: #eee; /* IE7 fix */
+}
+
+/* NAVIGATION Behavior */
+
+#navigation li a.selected-menu {
+	background-color: #369;
+	color: #fff;
+}
+
+#navigation li a.selected-menu span {
+	background-image: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/menu/menu_arrow_selected.gif);
+}
+
+#navigation li a.selected-menu:hover {
+	color: #fff;
+}
+
+#navigation li a:hover {
+	color: #69C;
+}
+
+#navigation li div ul li a:hover {
+	background-color: #fff;
+	color: #000;
+}
+
+/* Graphicy button stylez  */
+
+a.button {
+	font: bold 10px "Lucida Grande", "Lucida Sans Unicode", "Lucida Console", "Gill Sans", "Trebuchet MS", Trebuchet, Arial, Helvetica;
+	text-decoration: none;
+	text-transform: uppercase;
+	letter-spacing: .1em;
+	padding: 5px 0 5px 0;
+	margin-right: .5em;
+}
+
+* html a.button {
+	padding: 0;
+	margin: 5px 0 0 0;
+}
+
+* html a.button span {
+	line-height: 24px;
+}
+
+a.button.yellow span:hover, a.button.yellow_on_b span:hover, a.button.yellow_on_g span:hover {
+	color: #470c25;
+}
+
+a.button.orange span:hover, a.button.orange_on_b span:hover {
+	color: #fccca6;
+}
+
+a.button.green span:hover, a.button.green_on_b span:hover {
+	color: #cbe086;
+}
+
+a.button span {
+	line-height: 22px;
+	color: #fff;
+	margin: 0 0 0 9px;
+	padding: 5px 8px 5px 0;
+}
+
+a.button.yellow:focus span,
+a.button.yellow_on_b:focus span,
+a.button.yellow_on_g:focus span {
+	color: #470c25;
+}
+
+a.button.orange:focus span,
+a.button.orange_on_b:focus span {
+	color: #fccca6;
+}
+
+a.button.green:focus span,
+a.button.green_on_b:focus span {
+	color: #cbe086;
+}
+
+a:hover .destroy_button,
+input.destroy_button:hover {
+	background-position: 0 100%;
+}
+
+/* Put 'yer buttons in here */
+p.actions{
+	padding:2em 0;
+	clear:both;
+}
+
+.clickable{
+	cursor:pointer;
+}
+
+div.sidebar_button{
+	float:right; 
+	margin-top:-22px;
+}
+* html div.sidebar_button a{
+	position:relative;
+}
+/* end button styles  */
+
+
+span.fontsize a,
+body.largetext span.fontsize_large a,
+body.smalltext span.fontsize_small a {
+	border-bottom:2px solid red;
+}
+
+body.largetext span.fontsize a,
+body.smalltext span.fontsize a{
+	border-bottom:0;
+}
+
+span.fontsize{
+	font-size:1em;
+}
+body.largetext,
+span.fontsize_large{
+	font-size:1.2em;       
+}
+body.smalltext,
+span.fontsize_small{
+	font-size:.75em;   
+}
+
+
+h1, h2, h3, h4 {color: #933100; font: 1em Georgia, serif;}
+h1 {font-size: 1.625em;}
+h2 {
+	font-size: 1.285em;
+	padding-bottom: 0.33em;
+	border-bottom: 1px dotted #996;
+	margin-bottom: 0.5em; 
+	margin-top: 0.5em; 
+	clear: left
+}
+h3 {font-size: 1.1em;}
+h4 {font-size: 1em;}
+p {margin: 0.75em 0;}
+li {list-style: none;}
+
+.paginated {text-align: right;}
+.viewall {font-size: .75em;}
+.big {font-size: 1.2em;}
+
+#viewed_line{
+	color:#999;
+	font-size:.75em;
+	border-bottom:1px dotted #999;
+	padding:.5em;
+}
+
+.bookmarks, .home h2 {margin-top: 0;}
+
+/*	Thick input borders	*/
+input.text,
+textarea,
+select {
+	border: 1px solid #aaa;
+	background-color: #f8fdff;
+	vertical-align:middle;
+	padding:2px;
+	font:13px "Lucida Grande", Helvetica, Arial, sans-serif;
+	margin-top:.3em;
+}
+input.text, textarea, select {color: #232;}
+option {padding:0 5px;}
+input.hidden_submit{position: absolute;}
+
+#masthead {
+	background: #F3F3CC url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAA8CAYAAACjBADHAAAAHklEQVQoU2Oct8P9PwMUMH7+fGaUMxoGIygdICd/AP+S249Kj5zzAAAAAElFTkSuQmCC) 0 35px repeat-x;
+	height: 101px;
+	margin-bottom: 20px;
+}
+#masthead img {position: absolute; top: 15px; left: 10%; margin-left: -5px;}
+
+#masthead p {background: #9EB847; color: #452; height: 22px; padding: 6px 10% 0; margin: 0;
+  font-size: 0.85em; text-align: right;}
+#masthead p a {background: #9EB847; color: #FFC;}
+
+#contain {position: relative;}
+#contain, #footer {margin: 0 10%; min-width: 675px;}
+
+/* the next two rules fake 'min-width' and correct bad banner positioning in IE/Win */
+/* the next rule uses invalid values, but it works in IE/Win, and that's what we need */
+
+* html #contain, * html #footer {
+	width: expression((document.body.clientWidth < 844) ?
+	'675px' : '80%');
+	\width: expression((document.documentElement.clientWidth < 844) ?
+	'675px' : '80%');
+}
+
+* html #adverts .banner {
+	right: 0 !important;
+}
+
+/* end deeply icky IE/Win hacking */
+
+#sidebar {
+	margin: 2em 0 6em;
+	position: relative;
+	float: right;
+	width: 34%;
+	padding-top: 2em;
+	font-size: 0.875em;
+}
+
+.fullwidth #main {
+	width: 100%;
+	display: block;
+	float: none;
+	margin-top: 3em;
+}
+
+.fullwidth #sidebar {
+	position: absolute;
+	float: none;
+	width: auto;
+	top: 0;
+	padding: 0;
+	margin-top: 5em;
+	right: 0;
+	border-left: 1em solid #FFF;
+	background: #FFF;
+}
+
+/* the next rule compensates for IE/Win going wonky on 'auto' width positioned elements */
+* html .fullwidth #sidebar {
+	width: 25em;
+}
+
+.demi #sidebar, * html .demi #sidebar {
+	max-width: 35%;
+}
+
+.fullwidth #sidebar #addmark {
+	margin-bottom: 0;
+}
+
+.demi #sidebar #addmark {
+	width: 25em;
+}
+
+div.module {
+	background: #F2F2DE;
+	border: 4px solid #F2F2DE;
+}
+
+/* the next rule makes module pieces better-behaved in IE/Win */
+* html div.module {
+	position: relative;
+}
+
+div.outer {
+	background: #8B8B5C;
+	padding: 1px;
+	margin: 1em 0;
+}
+
+div.inner {
+	padding: 0.5em 0.75em 0;
+}
+
+/* 
+the next line prevents severe idiocy on the part of IE/Win. 
+the * html hack doesn't work for IE 7, removing it seems to fix the border blowout in both versions 
+*/
+div.inner {
+	height: 1%;
+}
+
+.home #main div.module {
+	border: 5px solid #F2F2DE;
+}
+
+.home #main div.outer {
+	background: #C5C5AD;
+}
+
+#main {
+  margin: 3em 0 6em;
+	float: left;
+	width: 63%;
+	position: relative;
+}
+
+#main #hotmarks, #main #featlinkers, #main #featgroups {
+  margin-bottom: 3em;
+}
+
+* html #main, * html #sidebar {
+	display: inline;
+}
+
+#main p.description, #main p.description p, #main div.description p {
+	font-family: Georgia, serif;
+}
+
+#hotmarks div.inner {
+	background: #FFF;
+	padding: 1em;
+}
+
+#intro {
+	margin-bottom: 1.5em;
+}
+
+#main li h3 {
+	font-weight: bold;
+}
+
+#main li h3 a img {
+	padding-right: 6px;
+	vertical-align: -2px;
+}
+
+#greeting {
+	margin: 1.5em 0;
+	font-weight: bold;
+}
+
+.icon {
+	display: inline;
+}
+
+#main .actions {
+	margin: 1em 0;
+}
+
+#main .actions {
+	display: none;
+}
+
+#main .actions a {
+	margin-right: 0.5em;
+}
+
+#main .actions b {
+	display: none;
+}
+
+.tagsnmore {
+	font-size: 0.9em;
+	margin-bottom: 1.5em;
+}
+
+.tagsnmore li {
+	border-top: 1px dotted #996;
+	padding: 0.4em 0 0.6em;
+	position: relative;
+}
+
+.tagsnmore .more {
+	font-size: 0.9em;
+}
+
+.tagsnmore img {
+	vertical-align: -3px;
+}
+
+p.details, g {
+	margin: 0.5em 0 1em;
+}
+
+p.details a, p.vcard a {
+	color: #000;
+	font-weight: bold;
+	font-size: 0.7em;
+	text-transform: uppercase;
+}
+
+span.caption, p.caption {
+	color: #450;
+	font-size: .8em;
+}
+
+div.authentication_provider {
+  clear: both;
+  margin: 1em 0;
+}
+
+div.auth_container {
+  float: left;
+}
+
+#sidebar h2 {
+	margin-top: 1.5em;
+	position: relative;
+}
+
+#sidebar div.module h3 {
+	color: #330;
+	font-weight: bold;
+	margin-bottom: 0.5em;
+	border: 0;
+}
+
+#sidebar form, #sidebar div.outer {
+	margin-bottom: 1em;
+}
+
+#find h3 {
+	color: #330;
+	font-weight: bold;
+	margin-bottom: 0.5em;
+	border: 0px;
+}
+
+#find .image {
+	vertical-align: -6px;
+	margin: 0 0.66em;
+}
+
+form#find {
+	margin-bottom: 1.5em;
+}
+
+#addmark .text, #addmark-more .text, #addmark-more textarea {
+	width: 80%;
+}
+
+#addmark p, #addmark-more p {
+	text-align: right;
+	margin-bottom: 0;
+}
+
+#addmark p a, #addmark-more p a {
+	float: left;
+	margin-top: 4px;
+	position: relative;
+}
+
+#addmark-more .rating {
+	float: left;
+	text-align: left;
+	margin: 0.5em 0 0 1.5em;
+}
+
+#addmark h4, #addmark-more h4 {
+	text-align: left;
+	clear: left;
+	padding-top: 0.75em;
+}
+
+ul#carrot {
+	float: left;
+	width: 100%;
+	margin: 0.75em 0 1.5em;
+}
+
+ul#carrot li {
+	width: 91px;
+}
+
+ul#carrot li img {
+	margin-bottom: 0.5em;
+}
+
+#tryit {
+	float: left;
+	margin-left: 1.5em;
+}
+
+#joinfree {
+	float: right;
+	margin-right: 1.5em;
+}
+
+div#carrot, #sidebar div.advert {
+	padding-bottom: 0.5em;
+	margin-bottom: .5em;
+	width: 100%;
+}
+
+div#feature, div.feature {
+	width: 100%;
+	margin-bottom: .75em;
+}
+
+div#carrot img, #sidebar div.advert img {
+	float: left;
+	margin: 0 10px 10px 0;
+}
+
+div#carrot {
+	border-bottom: 1px dotted #996;
+	float: left;
+	width: 100%;
+}
+
+div#feature, div.feature {
+	float: left;
+	width: 100%;
+}
+
+div#carrot h3, div.feature h3, div#feature h3 {
+	font-weight: bold;
+	margin-bottom: 0.25em;
+}
+
+div#carrot p, div.feature p, div#feature p {
+	margin: 0.25em 0 0.75em 42px;
+}
+
+div.photo {
+	width: 42px;
+	padding: 0;
+	float: left;
+	display: inline;
+	margin: 0 0px 10px 0;
+}
+
+#sign_in {
+	clear: right;
+}
+
+#sign_in input .text {
+	width: 100%;
+}
+
+#sign_in p {
+	font-size: 0.9em;
+	text-align: center;
+}
+
+#sidebar div.advert {
+	float: left;
+	clear: left;
+}
+
+#hotbox, #technorati {
+	margin-left: 1em;
+	padding-left: 8px;
+	clear: left;
+}
+
+#hotbox li {
+	margin-bottom: 0.25em;
+}
+
+#footer {
+	clear: both;
+	color: #663;
+	padding-top: 1em;
+	font-size: 0.85em;
+	padding-bottom: 33px;
+}
+
+#footer p {
+	margin: 0;
+}
+
+* html #footer p {
+	width: 675px;
+}
+
+#footer ul {
+	text-align: right;
+	margin-top: -1.2em;
+	padding-bottom: 1.5em;
+	margin-left: 22em;
+}
+
+#footer ul li {
+	display: inline;
+	list-style: none;
+	padding: 0 0.5em;
+	border-right: 1px solid;
+}
+
+#footer ul li.last {
+	border-right: none;
+	padding-right: 0;
+}
+
+#adverts {
+	clear: both;
+	font-size: 0.85em;
+}
+
+#adverts .banner {
+	position: absolute;
+	top: -86px;
+	right: 0;
+}
+
+* html #adverts .banner {
+	right: 10%;
+}
+
+#adverts h3, #adverts h4 {
+	font-weight: bold;
+	margin: 0;
+}
+
+#adverts h3 {
+	margin-bottom: 0.75em;
+}
+
+#adverts ul li {
+	float: left;
+	width: 49%;
+}
+
+#adverts ul p {
+	margin: 0;
+}
+
+#adverts .textads, #adverts .advert, #adverts .googleads {
+	border-top: 1px dotted #996;
+	padding-top: 1.5em;
+}
+
+#adverts .textads {
+	float: left;
+	width: 63%;
+}
+
+#adverts .googleads {
+	text-align: center;
+	width: 100%;
+	padding-bottom: 1.5em;
+}
+
+#adverts .advert {
+	float: right;
+	width: 34%;
+}
+
+#adverts .advert img {
+	float: left;
+	margin: 0 10px 0.75em 0;
+}
+
+.tabledata {
+	font-size: 0.85em
+}
+
+.tabledata .inner {
+	padding-left: 0;
+	padding-right: 0;
+}
+
+.tabledata h3 {
+	color: #330;
+	border-bottom: 1px dotted #996;
+	padding-bottom: 0.33em;
+	margin: 0.33em 0 0.33em 0.75em;
+	font-size: 1.33em;
+}
+
+.tabledata p {
+	margin: 0.33em 0 0.33em 0.75em;
+	font-size: 1.33em;
+}
+
+.tabledata .paginated {
+	text-align: right;
+	margin: -2.25em 0.5em 1em;
+}
+
+.tabledata table {
+	width: 100%;
+}
+
+.tabledata tbody {
+	background: #FFF;
+}
+
+.tabledata thead th {
+	text-align: left;
+	text-transform: uppercase;
+	padding: 0.5em 0;
+}
+
+.tabledata thead th a {
+	text-decoration: underline;
+	color: #330;
+}
+
+.tabledata thead th.action {
+	padding-left: 8px;
+}
+
+.tabledata tbody td {
+	border-bottom: 1px solid #CC9;
+	padding: 0.5em 0;
+}
+
+.tabledata tbody tr.with_description td {
+	border-width: 0;
+}
+
+.tabledata tbody td.description p {
+	padding: 0 1em 0 44px;
+	color: #666;
+	font-size: 1.2em;
+	margin-top: 0;
+	font-family: Georgia, serif;
+}
+
+.tabledata tbody td.description p label {
+	font-weight: bold;
+	font-family: "Lucida Grande", Helvetica, Arial;
+	color:#330;
+	text-transform:uppercase;
+	font-size:.8em;
+	padding-right:.5em;
+}
+
+.tabledata tbody td.action {
+	width: 32px;
+	text-align: center;
+}
+
+.tabledata tbody td.pic {
+	width: 44px;
+	text-align: center;
+}
+
+.tabledata tbody td.user {
+	font-size: larger;
+	font-weight: bold;
+}
+
+.tabledata tbody td.last {
+	text-transform: uppercase;
+	width: 10em;
+}
+
+.tabledata .tags {
+	width: 50%;
+}
+
+.tabledata tbody td.tags input {
+	width: 95%;
+}
+
+.tabledata .name {
+	padding-left: 1em;
+}
+
+.tabledata .user {
+	padding-left: 0;
+}
+
+.tabledata .ratings {
+	height: auto;
+}
+
+.tabledata .select {
+	width: 2em;
+	text-align: center;
+}
+
+.tabledata th.rating {
+	background: none;
+	padding-left: 4px
+}
+
+.tabledata td.mark {
+	font-weight: bold;
+}
+
+.tabledata td.desc {
+	font-size: 0.85em;
+}
+
+.tabledata .by {
+	padding-left: 2em;
+}
+
+.tabledata tbody tr.unread td {
+	font-weight: bold;
+}
+
+/* 
+The table rules above all seem to be specifically for showing bookmark data in a table. There is also non-semantic html involved.
+I've been instructed to match this table style and come back and refactor later.
+overridding 0 left padding for non-bookmark tables
+*/
+.tabledata table.nonbookmarktable td,
+.tabledata table.nonbookmarktable th {
+  padding-left: .5em;
+}
+
+/* --- */
+
+.tabs {
+	margin: 1em 0 0;
+	padding: 1em 0 0;
+	list-style: none;
+	float: left;
+	width: 100%;
+	font-size: 0.85em;
+	border-bottom: 1px solid #8B8B5C;
+}
+
+* html .tabs {
+	position: relative;
+}
+
+.tabs li {
+	float: left;
+	margin: 0 0 -1px 0.5em;
+	padding: 0 0 0 1em;
+	border: 1px solid #8B8B5C;
+	border-bottom: 0;
+}
+
+.tabs a {
+	float: left;
+	display: block;
+	padding: 0.5em 1.5em 0.5em 0.5em;
+	text-decoration: none;
+	font-weight: bold;
+}
+
+/* Commented Backslash Hack hides rule from IE5-Mac \*/
+.tabs a {
+	float: none;
+}
+
+/* End IE5-Mac hack */
+.tabs a:hover {
+	color: #333;
+}
+
+.tabs .current {
+	background: #FFF;
+}
+
+/* the next line merges the tab with the pane in IE/Win */
+* html .tabs .current {
+	position: relative;
+}
+
+.tabs .current a {
+	padding-bottom: 0.5em;
+	color: #333;
+}
+
+* html .tagcloud .tabs {
+	margin-bottom: -0.1em;
+}
+
+* html .tagcloud .inner {
+	padding-top: 4px
+}
+
+.tagcloud h3 {
+	margin-bottom: 0.25em;
+}
+
+.tagcloud .pane {
+	padding: 1em;
+	background: #FFF;
+	border: 1px solid #8B8B5C;
+	border-top: 0;
+	clear: left;
+	width: 100%;
+	height: 200px;
+	overflow: auto;
+	padding: 0;
+	margin: 0
+}
+
+.tagcloud .data {
+	padding: 0.5em 0.75em 0.5em 0.75em;
+}
+
+.tagcloud a.selected, .tagcloud .data a.selected, .tagcloud .data a.selected:visited {
+	color: #fff;
+	background-color: #9EB846;
+	padding: 0 .3em;
+}
+
+.tagcloud .pane em {
+	font-style: normal;
+	font-size: 1.5em;
+}
+
+.tagcloud .pane em em {
+	font-size: 1.2em;
+}
+
+.tagcloud .tabs {
+	margin: 0;
+	padding-top: 0;
+	border-left: 1px solid #8B8B5C;
+}
+
+.tagcloud .tabs li {
+	padding-left: 0;
+	margin-left: 0;
+	border-width: 1px 1px 0 0;
+}
+
+.tagcloud .tabs a {
+	margin: 0;
+	padding: 0.5em;
+}
+
+.prefs ul {
+	margin: 0.25em 0 1em;
+}
+
+.prefs li {
+	padding-left: 1.25em;
+	text-indent: -1.25em;
+	margin-bottom: 0.75em;
+}
+
+/* --- */
+
+div#url {
+	display: inline
+}
+
+div#title {
+	display: inline
+}
+
+/* --- */
+
+.error {
+	color: #933100;
+}
+
+.notice {
+	color: #928f73;
+}
+
+/* BOOKMARK */
+
+#hotmarks h3 {
+	margin-left: -24px;
+}
+
+.hfeed h2 {
+	margin-top: 1.25em;
+}
+
+ol.hfeed li {
+	padding-left: 40px;
+}
+
+ol.belongs-to-user li {
+	padding-left: 28px;
+}
+
+ol.hfeed li ul li {
+	padding-left: 0;
+}
+
+.hfeed .profile {
+	float: left;
+	margin-left: -40px;
+}
+
+ul.bookmark-actions {
+	margin-top: 10px;
+	zoom: 1; /* IE float clear */
+}
+
+ul.bookmark-actions:after {
+	content: "."; 
+	display: block; 
+	height: 0; 
+	clear: both; 
+	visibility: hidden;
+}
+
+ul.bookmark-actions li {
+	float: left;
+	border-left: 1px solid #330;
+	padding: 0;
+	margin: 0;
+}
+
+ul.bookmark-actions li.details,
+ul.bookmark-actions li.share {
+	position: relative;
+}
+
+ul.bookmark-actions li.first {
+	border-left: none;
+}
+
+ul.bookmark-actions li.privacy, ul.bookmark-actions li.thanking {
+	color: #369;
+	text-transform: uppercase;
+	font: bold 0.85em/14px "Lucida Grande", Helvetica, Arial, sans-serif;
+	padding-left: 1em;
+	padding-right: 1em;
+}
+
+ul.bookmark-actions li.privacy.private {
+	background: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/icons/locked.png) no-repeat 6px 2px;
+}
+
+ul.bookmark-actions li.privacy {
+	background: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/icons/unlocked.png) no-repeat 8px 2px;
+	padding-left: 23px;
+}
+
+ul.bookmark-actions li.details a,
+ul.bookmark-actions li.share a,
+ul.bookmark-actions li.vcard span {
+  padding: 0 1em;
+}
+
+ul.bookmark-actions li.details a,
+ul.bookmark-actions li.share a {
+	font: bold 0.85em/14px "Lucida Grande", Helvetica, Arial, sans-serif;
+	text-transform: uppercase;
+	display: block;
+}
+
+ul.bookmark-actions li.details a span,
+ul.bookmark-actions li.share a span {
+	padding-right: 1em;
+	background: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/menu/menu_arrow.gif) no-repeat 100% 4px;
+}
+
+ul.bookmark-actions li.details div,
+ul.bookmark-actions li.share div {
+	background-color: #eee; /* background must be applied here (IE bug) */
+	position: absolute;
+	top: 100%;
+	left: -1px;
+	z-index: 10000;
+	padding: 0;
+}
+
+ul.bookmark-actions li.details div div.drop-shadow,
+ul.bookmark-actions li.share div div.drop-shadow {
+	position: absolute;
+	background: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/shadow.png) no-repeat bottom right;
+	top: 6px;
+	left: 6px;
+	z-index: 9999;
+	height: 100%;
+	width: 100%;
+}
+
+ul.bookmark-actions li.details div ul,
+ul.bookmark-actions li.share div ul {
+	border: 1px solid #bbb;
+	border-bottom-color: #777;
+	border-right-color: #777;
+	border-top: none;
+}
+
+ul.bookmark-actions li div ul.first {
+	border-top: 1px solid #bbb;
+}
+
+ul.bookmark-actions li.details div ul li,
+ul.bookmark-actions li.share div ul li {
+	position: relative;
+	padding: 0;
+	margin: 0;
+	z-index: 10000; /* Firefox goes nuts without this */
+	float: none;
+	border: none;
+}
+
+ul.bookmark-actions li.details div ul li a,
+ul.bookmark-actions li.share div ul li a {
+	font: normal 0.8em/1 "Lucida Grande", Helvetica, Arial, sans-serif;
+	color: #000;
+	text-decoration: none;
+	text-transform: none;
+	display: block;
+	padding: 0 8px;
+	height: 20px;
+	line-height: 20px !important; /* Safari fix */
+	background-color: #eee; /* IE7 fix */
+}
+
+/* bookmark Behavior */
+
+ul.bookmark-actions li a.selected-menu {
+	background-color: #369;
+	color: #fff;
+}
+
+ul.bookmark-actions li a.selected-menu span {
+	background-image: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/menu/menu_arrow_selected.gif);
+}
+
+ul.bookmark-actions li.active {
+	font-weight: bold;
+	cursor: pointer;
+}
+
+ul.bookmark-actions li.privacy.active.hovered,
+ul.bookmark-actions li.thanking.active.hovered {
+	color: #69C;
+}
+
+ul.bookmark-actions li.details a.selected-menu:hover,
+ul.bookmark-actions li.share a.selected-menu:hover {
+	color: #fff;
+}
+
+ul.bookmark-actions li.details a:hover,
+ul.bookmark-actions li.share a:hover {
+	color: #69C;
+}
+
+ul.bookmark-actions li.details div ul li a:hover,
+ul.bookmark-actions li.share div ul li a:hover {
+	background-color: #fff;
+	color: #000;
+}
+
+/* COMPACT BOOKMARKS */
+.compact {
+	margin-bottom: 20px;
+	zoom: 1;
+}
+
+.compact:after {
+	content: "."; 
+	display: block; 
+	height: 0; 
+	clear: both; 
+	visibility: hidden;
+}
+
+.compact div.main-content ul.bookmark-actions {
+	font: 1em/1em "Lucida Grande", Helvetica, Arial, sans-serif;
+	margin-top: 0;
+	float: left;
+	margin-right: 1em;
+	margin-bottom: 1em;
+	zoom: normal;
+}
+
+.compact ul.bookmark-actions:after {
+	content: ""; 
+}
+
+.compact div.main-content {
+	margin-top: 8px;
+	border-bottom: 1px dotted #996;
+	font-size: 0.9em;
+}
+
+.compact li.vcard {
+	margin-top: 0;
+	font: 0.85em/1.2em "Lucida Grande", Helvetica, Arial, sans-serif;
+}
+
+.compact li.vcard a {
+	font-size: 1em;
+	color: #369;
+	text-decoration: none;
+	text-transform: none;
+}
+
+.compact li.vcard a:visited {
+	color: #369;
+}
+
+.compact li.vcard a:hover {
+	color: #69C;
+}
+
+.compact div.secondary-content p {
+	padding-bottom: 10px;
+	border-bottom: 1px dotted #996;
+}
+
+.compact div.secondary-content-wrapper {
+	position: absolute;
+	z-index: 10010;
+	width: 75%;
+}
+
+.compact div.secondary-content ul.bookmark-actions li {
+	color: #369;
+	text-transform: uppercase;
+	font: bold 0.85em/14px "Lucida Grande", Helvetica, Arial, sans-serif;
+	padding-left: 1em;
+	padding-right: 1em;
+}
+
+.compact div.secondary-content ul.bookmark-actions li.first {
+	padding-left: 0;
+}
+
+.compact div.secondary-content ul.bookmark-actions li.privacy.private {
+	background: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/icons/locked.png) no-repeat 6px 2px;
+}
+
+.compact div.secondary-content ul.bookmark-actions li.privacy {
+	background: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/icons/unlocked.png) no-repeat 8px 2px;
+	padding-left: 23px;
+}
+	
+.compact div.secondary-content {
+	top: 6px;
+	position: absolute;
+	z-index: 10011;
+	color: #333;
+	width: 100%;
+	border: 1px solid #70704c;
+	border-top: 1px solid #eee;
+	padding: 3px;
+	background-color: #f9f9f9;
+}
+
+.window-closer {
+	display: block;
+	margin: 2px auto;
+	font-size: 12px;
+	text-align: center;
+	text-decoration: underline;
+}
+
+.compact div.drop-shadow {
+	position: absolute;
+	background: url(/web/20080903095240im_/http://gnolia.cachefly.net/images/shadow.png) no-repeat bottom right;
+	top: 6px;
+	left: 6px;
+	height: 100%;
+	width: 100%;
+}
+
+.compact div.secondary-content ul.bookmark-actions,
+.compact div.secondary-content p {
+	margin-left: 28px;
+	margin-right: 28px;
+}
+
+/* saved confirmation message TODO */
+
+.starrater .starrater_saved {
+	margin-left: 5px;
+	font-size: 11px;
+	line-height: 12px;
+	color: #444;
+	float: left;
+}
+
+.clearbr {
+	clear: both;
+}
+
+/* my float clearing technique is unstoppable */
+.clear:after {
+	content: "."; 
+	display: block; 
+	height: 0; 
+	clear: both; 
+	visibility: hidden;
+}
+
+.clear {
+	display: inline-table;
+}
+
+/* Hides from IE-mac \*/
+* html .clear {
+	height: 1%;
+}
+
+.clear {
+	display: block;
+}
+
+/* End hide from IE-mac */
+
+/* Feed links */
+
+.feedlinks {
+	clear: both;
+}
+
+.feedlinks img {
+	vertical-align: baseline
+}
+
+.cclinks img {
+	vertical-align: top
+}
+
+/* Column Lists */
+
+.column {
+	display: inline;
+	float: left;
+	list-style: none;
+}
+
+.first.column {
+	clear: both;
+	padding-right: 4%;
+}
+
+.two.column {
+	width: 43%;
+}
+
+.three.column {
+	width: 30%;
+	padding-right: 3%;
+}
+
+.four.column {
+	width: 22%;
+	padding-right: 3%;
+}
+
+.five.column {
+	width: 17%;
+	padding-right: 3%;
+}
+
+ul.expanded {
+	margin-left: 90px;
+}
+
+.compact .column {
+	text-align: center;
+}
+
+.column .photo {
+	padding: 5px
+}
+
+ul#moderator_list, .option_list {
+	margin: 0.75em .5em;
+	width: 400px;
+}
+
+#moderator_list li, .option_list li {
+	margin: .5em 0;
+}
+
+/* Dialog Boxes */
+
+#dialog {
+	background-color: #000;
+	opacity: 0.40;
+	filter: alpha(opacity=15);
+	height: 100%;
+}
+
+#dialog_box {
+	width: 400px;
+	padding-left: 1em;
+	padding-right: 1em;
+	background-color: #F2F2DE;
+	border: 2px solid #8B8B5C;
+	font-size: 1.2em;
+}
+
+#dialog_box p.buttons {
+	text-align: right;
+}
+
+#dialog_box p.buttons img, #dialog_box p.buttons a.button {
+	margin-left: .5em;
+}
+
+/* Autocomplete */
+#post_tags_p {
+	margin: 0;
+	padding: 0;
+}
+
+div.auto_complete {
+	width: 350px;
+	background: #fff;
+}
+
+div.auto_complete div ul {
+	border: 1px solid #888;
+	margin: -11px 0 0 0;
+	padding: 0;
+	width: 250px;
+	list-style-type: none;
+	position: absolute;
+	background-color: #fff;
+}
+
+div.auto_complete div ul li {
+	margin: 0;
+	padding: 3px;
+}
+
+div.auto_complete div ul li.selected {
+	background-color: #ffb;
+}
+
+div.auto_complete div ul strong.highlight {
+	color: #800;
+	margin: 0;
+	padding: 0;
+}
+
+/* Linkroll Preview */
+#linkroll-preview {
+	width: 270px;
+}
+
+/* Invitation form stuff */ 
+.friendly-email {
+	float: left;
+	margin-right: 32px;
+	margin-bottom: 8px;
+}
+
+#invite-linky {
+
+}
+
+/* TECHNORATI script include styles */
+
+#technorati label {
+	font: 1.4em Georgia, "Times New Roman", serif;
+	color: #933100;
+	padding-bottom: 0.33em;
+	border-bottom: 1px dotted #996;
+	margin-top: 1.2em;
+	display: block;
+}
+
+#technorati input#te_search {
+	border: 1px solid #999;
+	background-color: #f8fdff;
+}
+
+#technorati input.btn {
+	background-color: #fff;
+}
+
+#technorati input#te_search, #technorati input.btn {
+	margin: 1em .5em 1em 0;
+}
+
+#technorati p#te_l {
+	margin: 0;
+}
+
+#technorati p#te_lo {
+	clear: both;
+	margin-top: 1em;
+}
+
+/* Help box */
+.help_icon {
+	cursor: help;
+	vertical-align: top;
+}
+
+li.help_tab {
+	border: 0;
+	padding: .5em;
+}
+
+/* Form tables */
+table.compose_message {
+	width: 600px;
+	margin-bottom: 1em;
+}
+
+table.compose_message td {
+	vertical-align: top;
+	padding: .5em;
+}
+
+table.compose_message td textarea {
+	height: 10em;
+	width: 90%;
+}
+
+table.compose_message td input[type="text"] {
+	width: 90%;
+}
+
+table.compose_message td.left {
+	text-align: right;
+	width: 7em;
+}
+
+label {
+	font-weight: bold;
+}
+
+table.compose_message td.right img.photo {
+	margin-right: .5em;
+}
+
+table.compose_message td label {
+	text-transform: uppercase;
+	font-weight: bold;
+	font-size: .8em;
+}
+
+/*Code text boxes*/
+
+.code_box {
+	font-size: 11px;
+	font-family: Monoco, monospace;
+}
+
+#group_badge_code {
+	width: 500px;
+	height: 60px;
+}
+
+.code_badge {
+	float: left;
+	margin-right: 1em;
+}
+
+/* Marketing images */
+img.marketing_preview {
+	float: left;
+	margin: 1em;
+}
+
+p img.marketing_preview {
+	margin: 0 1em 1em 1em;
+}
+
+/* Signin */
+.signin_element {
+	width: 280px;
+}
+
+#openid_icon {
+	vertical-align: bottom;
+}
+
+.print_only {
+	display: none;
+}
+
+li.group {
+  padding-bottom: .75em;
+}
+
+h3 .favicon {
+  float: left;
+  margin-right:0.1em;
+}
+
+#featlinkers h2 {margin-top 2.6em;}
+#navigation {margin-left: -1em;}
+
+/* 404 page */
+
+body.error_404 div#contain {
+  margin-bottom: 5em;
+}
+
+body.error_404 h1 {
+  margin-bottom: 1em;
+}
+
+body.error_404 img#empty_pot {
+  margin-left: -6.5em;
+  margin-right: 1em;
+  float: left;
+}
+
+body.error_404 div#main ul, body.error_404 div#main p {
+  font-weight: bold;
+}
+
+body.error_404 div#main ul li {
+  list-style: disc inside;
+}
+
+body.error_404 div#main p {
+  margin-top: 3em;
+}

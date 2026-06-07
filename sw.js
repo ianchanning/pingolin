@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pinboard-pwa-v2';
+const CACHE_NAME = 'pinboard-pwa-v3';
 const VENDOR_ASSETS = [
   '/vendor/sqlite3-bundler-friendly.mjs',
   '/vendor/sqlite3.wasm',
@@ -12,9 +12,8 @@ const VENDOR_ASSETS = [
 const APP_ASSETS = [
   '/',
   '/index.html',
-  '/src/main.ts',
-  '/src/worker.ts',
-  '/src/style.css'
+  '/main.js',
+  '/app.js'
 ];
 
 // Install Event: Cache what we can
@@ -48,17 +47,22 @@ self.addEventListener('activate', (event) => {
 
 // Helper to inject COOP/COEP headers
 function enhanceResponse(response) {
-  if (!response) return response;
+  if (!response || response.type === 'opaque') return response;
   
-  const newHeaders = new Headers(response.headers);
-  newHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
-  newHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
-  
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: newHeaders
-  });
+  try {
+    const newHeaders = new Headers(response.headers);
+    newHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
+    newHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
+    
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: newHeaders
+    });
+  } catch (err) {
+    console.error('[SW] Failed to enhance response:', err);
+    return response;
+  }
 }
 
 // Fetch Event: Mixed Strategy
@@ -68,15 +72,13 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
   // Filter for web schemes only. 
-  // This prevents 'chrome-extension' or 'data' schemes from crashing the cache.
   if (!['http:', 'https:'].includes(url.protocol)) return;
 
   // Strategy A: Cache-First for heavy/static vendor assets
   if (VENDOR_ASSETS.some(asset => url.pathname.endsWith(asset))) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
-        if (cached) return enhanceResponse(cached);
-        return fetch(event.request).then(enhanceResponse);
+        return cached ? enhanceResponse(cached) : fetch(event.request).then(enhanceResponse);
       })
     );
     return;
@@ -86,14 +88,17 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Update cache with fresh version
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        // Update cache with fresh version if it's a valid successful response
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
         return enhanceResponse(response);
       })
-      .catch(() => {
+      .catch(async () => {
         // Fallback to cache if network is dead
-        return caches.match(event.request).then(enhanceResponse);
+        const cached = await caches.match(event.request);
+        return enhanceResponse(cached) || new Response('Offline: Resource not in cache.', { status: 503 });
       })
   );
 });

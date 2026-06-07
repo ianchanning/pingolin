@@ -4,50 +4,187 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>pingolin</title>
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="manifest" href="/site.webmanifest">
-  <script type="module" crossorigin src="/assets/index-Dng6sbl-.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Cbc9QYG6.css">
+    <link rel="icon" href="/favicon.ico">
+    <style>
+        :root { 
+            --bg: #FFF; 
+            --fg: #330; 
+            --accent: #933100; 
+            --header-bg: #F3F3CC;
+            --green-bar: #9EB847;
+            --border: #CC9;
+        }
+        html, body { 
+            margin: 0; padding: 0; 
+            background: var(--bg) url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAAhCAYAAAAcTBGCAAAAI0lEQVQYV2P8/PnMfwYoYCSHc/ToWsoMwG3pvB3uCKNHOQwA7pJivwLO3TkAAAAASUVORK5CYII=) 0 100% repeat-x;
+            color: var(--fg); 
+            font-family: "Lucida Grande", Arial, Helvetica, sans-serif;
+            line-height: 1.5em;
+            height: 100vh; overflow: hidden; 
+        }
+        #elm-app { height: 100vh; width: 100vw; display: flex; flex-direction: column; overflow: hidden; }
+        
+        #masthead {
+            background: var(--header-bg) url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAA8CAYAAACjBADHAAAAHklEQVQoU2Oct8P9PwMUMH7+fGaUMxoGIygdICd/AP+S249Kj5zzAAAAAElFTkSuQmCC) 0 35px repeat-x;
+            height: 101px;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+            position: relative;
+        }
+        #masthead .top-bar {
+            background: var(--green-bar);
+            color: var(--header-bg);
+            height: 22px;
+            padding: 3px 10% 3px;
+            margin: 0;
+            font-size: 0.85em;
+            text-align: right;
+            font-weight: normal;
+        }
+        #masthead h1 {
+            position: absolute;
+            top: 48px;
+            left: 10%;
+            margin: 0;
+            padding-left: 70px;
+            font-size: 3rem;
+            font-family: Georgia, serif;
+            color: var(--fg);
+            letter-spacing: -2px;
+            font-weight: normal;
+            text-shadow: 
+                -1px -1px 0 var(--header-bg),  
+                 1px -1px 0 var(--header-bg),
+                -1px  1px 0 var(--header-bg),
+                 1px  1px 0 var(--header-bg),
+                -3px -3px 0 var(--border),
+                 3px -3px 0 var(--border),
+                -3px  3px 0 var(--border),
+                 3px  3px 0 var(--border);
+        }
+        #masthead-logo {
+            position: absolute;
+            top: 34px;
+            left: 10%;
+            height: 60px;
+            z-index: 10;
+        }
+
+        .pingolin-fortress { 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            box-sizing: border-box; 
+            width: 100%; 
+            overflow: hidden; 
+        }
+        
+        #contain {
+            margin: 0 10%;
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            max-width: 1000px;
+        }
+        
+        .search-chamber {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-shrink: 0;
+        }
+        
+        input { 
+            border: 1px solid #aaa;
+            background-color: #f8fdff;
+            padding: 4px;
+            font: 13px "Lucida Grande", Helvetica, Arial, sans-serif;
+            flex: 1;
+        }
+        input:focus { border-color: var(--accent); outline: none; }
+        
+        button { 
+            background: var(--accent); 
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            color: #FFF; 
+            padding: 4px 10px; 
+            font-weight: bold; 
+            cursor: pointer;
+            font-size: 0.8em;
+            text-transform: uppercase;
+        }
+        button:hover { filter: brightness(1.1); }
+        
+        .status-chamber { 
+            font-size: 0.75em;
+            flex-shrink: 0;
+            color: var(--fg);
+            font-weight: bold;
+            font-family: Georgia, serif;
+        }
+        .progress-bar { height: 4px; background: #DDD; margin-top: 0.5rem; position: relative; overflow: hidden; }
+        .progress-fill { position: absolute; height: 100%; background: var(--green-bar); transition: width 0.3s ease-out; }
+        
+        .archive-scroll-container { 
+            flex: 1; 
+            overflow-y: auto; 
+            position: relative; 
+            width: 100%; 
+            min-height: 0;
+            border-top: 1px solid #996;
+        }
+        
+        .bookmark-shrine { 
+            padding: 1rem 0; 
+            box-sizing: border-box; 
+            background: transparent; 
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: 120px;
+            will-change: transform;
+            border-bottom: 1px dotted #ee6;
+        }
+        
+        .bookmark-shrine h3 {
+            margin: 0 0 0.3rem 0;
+            font-family: Georgia, serif;
+            font-size: 1.1em;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .bookmark-shrine a {
+            color: #369;
+            text-decoration: none;
+        }
+        .bookmark-shrine a:hover {
+            color: #69C;
+        }
+        
+        .tags { 
+            font-size: 0.85em;
+            color: #330;
+            border-top: 1px dotted #996;
+            margin-top: 10px;
+            padding: 0.4em 0 0.6em;
+        }
+        
+        .pending-icon { float: right; color: var(--accent); font-size: 1.2em; }
+        
+        .ritual-controls { margin-bottom: 2em; padding: 1.5em; background: #F3F3CC; border: 1px solid var(--border); display: flex; gap: 0.5rem; }
+        .add-form { background: #F2F2DE; border: 1px solid #8B8B5C; padding: 1rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; flex-shrink: 0; }
+    </style>
 </head>
 <body>
-    <div id="app">
-        <header>
-            <div id="masthead">
-              <p>&nbsp;</p>
-              <h1><img id="logo" src="/favicon-32x32.png" /> pingolin <a id="toggle-add-btn" href="#" style="text-decoration: none; color: inherit; display: none; font-size: 0.8em; vertical-align: middle;">+</a></h1>
-            </div>
-            <div id="add-form" style="display: none;" data-testid="add-form">
-                <input type="text" id="new-url" placeholder="https://..." data-testid="new-url">
-                <input type="text" id="new-title" placeholder="Title" data-testid="new-title">
-                <input type="text" id="new-tags" placeholder="Tags (space separated)" list="tag-suggestions" data-testid="new-tags">
-                <datalist id="tag-suggestions"></datalist>
-                <button id="add-button" data-testid="add-button">Add</button>
-            </div>
-            <div id="indicators">
-                <div id="status" data-testid="sync-progress">Initializing...</div>
-                <span id="offline-indicator" class="indicator" data-testid="network-status">OFFLINE</span>
-                <span id="sync-indicator" class="indicator" data-testid="sync-status">SYNCING</span>
-            </div>
-        </header>
-        <main>
-            <div id="login-container" style="display: none;" data-testid="login-container">
-                <input type="password" id="auth-token" placeholder="username:TOKEN" data-testid="auth-token">
-                <button id="sync-button" data-testid="sync-button">Sync</button>
-                <button id="reset-button">Reset</button>
-            </div>
-            <div id="search-container" style="display: none;">
-                <div id="search-form">
-                    <input type="text" id="search" placeholder="Search..." data-testid="search-input">
-                </div>
-                <div id="viewport">
-                    <div id="canvas">
-                        <ul id="bookmark-list"></ul>
-                    </div>
-                </div>
-            </div>
-        </main>
-    </div>
+    <div id="elm-app"></div>
+    <script src="/main.js"></script>
+    <script src="/app.js"></script>
 </body>
 </html>
