@@ -1,11 +1,11 @@
-import sqlite3InitModule from './vendor/sqlite3-bundler-friendly.mjs';
+import sqlite3InitModule from '/vendor/sqlite3-bundler-friendly.mjs';
 
 /**
  * Pinboard PWA - Background Worker
  * Handles all database operations using SQLite WASM + OPFS.
  */
 
-let db: any = null;
+let db = null;
 
 const SCHEMA = `
 -- Relational Store
@@ -60,7 +60,7 @@ CREATE TRIGGER IF NOT EXISTS bookmarks_au AFTER UPDATE ON bookmarks BEGIN
 END;
 `;
 
-const initDb = async (dbName: string = '/pinboard.db') => {
+const initDb = async (dbName = '/pinboard.db') => {
   try {
     const sqlite3 = await sqlite3InitModule({
       print: console.debug,
@@ -131,7 +131,7 @@ self.onmessage = async (e) => {
       case 'QUERY_SEARCH': {
         // Payload is the search term
         let sql = '';
-        let bind: any[] = [];
+        let bind = [];
 
         if (payload.startsWith('#')) {
           // Exact Tag Match mode
@@ -176,7 +176,7 @@ self.onmessage = async (e) => {
 
       case 'UPSERT_BATCH':
         // Payload is an array of bookmark objects from server
-        db.transaction((db: any) => {
+        db.transaction((db) => {
           const insertStmt = db.prepare(`
             INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
             VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?)
@@ -229,7 +229,7 @@ self.onmessage = async (e) => {
 
       case 'LOCAL_UPSERT':
         // Payload is a single bookmark object
-        db.transaction((db: any) => {
+        db.transaction((db) => {
           const now = Date.now();
           const existing = db.exec({
             sql: 'SELECT sync_status FROM bookmarks WHERE href = ?',
@@ -337,7 +337,7 @@ self.onmessage = async (e) => {
           rowMode: 'object'
         });
 
-        const counts: Record<string, number> = {};
+        const counts = {};
         for (const row of tagRows) {
           const tList = (row.tags || '').split(' ').filter(Boolean);
           for (const t of tList) {
@@ -355,9 +355,9 @@ self.onmessage = async (e) => {
 
       case 'RECONCILE_DATE':
         // Payload: { date: 'YYYY-MM-DD', bookmarks: [...] }
-        db.transaction((db: any) => {
+        db.transaction((db) => {
           const { date, bookmarks } = payload;
-          const serverHrefs = new Set(bookmarks.map((b: any) => b.href));
+          const serverHrefs = new Set(bookmarks.map((b) => b.href));
 
           // 1. Get local records for this date
           const localRecords = db.exec({
@@ -400,7 +400,7 @@ self.onmessage = async (e) => {
 
       case 'SET_SYNCHRONIZED': {
         // Payload is href
-        db.transaction((db: any) => {
+        db.transaction((db) => {
           const existing = db.exec({
             sql: 'SELECT sync_status FROM bookmarks WHERE href = ?',
             bind: [payload],
@@ -443,7 +443,7 @@ self.onmessage = async (e) => {
         break;
 
       case 'DEBUG_CLEAR_DB':
-        db.transaction((db: any) => {
+        db.transaction((db) => {
           // Drop tables to bypass slow triggers
           db.exec('DROP TABLE IF EXISTS bookmarks');
           db.exec('DROP TABLE IF EXISTS bookmarks_fts');
@@ -471,13 +471,13 @@ self.onmessage = async (e) => {
   } catch (error) {
     self.postMessage({
       type: 'ERROR',
-      payload: (error as Error).message,
+      payload: error.message,
       id
     });
   }
 };
 
-const hydrateArchive = async (proxyUrl: string, authToken: string, id: string) => {
+const hydrateArchive = async (proxyUrl, authToken, id) => {
   try {
     self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'NETWORK: Requesting full archive (The Big Pull)...' }, id });
 
@@ -501,7 +501,7 @@ const hydrateArchive = async (proxyUrl: string, authToken: string, id: string) =
     for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
       const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
 
-      db.transaction((db: any) => {
+      db.transaction((db) => {
         const stmt = db.prepare(`
           INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
           VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?)
@@ -547,7 +547,7 @@ const hydrateArchive = async (proxyUrl: string, authToken: string, id: string) =
 };
 
 let syncLoopActive = false;
-const startSyncLoop = (proxyUrl: string, authToken: string) => {
+const startSyncLoop = (proxyUrl, authToken) => {
   if (syncLoopActive) return;
   syncLoopActive = true;
   console.log('[Worker] Sync Loop Started');
@@ -565,7 +565,7 @@ const startSyncLoop = (proxyUrl: string, authToken: string) => {
   tick();
 };
 
-const flushPendingChanges = async (proxyUrl: string, authToken: string) => {
+const flushPendingChanges = async (proxyUrl, authToken) => {
   const pending = db.exec({
     sql: "SELECT * FROM bookmarks WHERE sync_status != 'SYNCHRONIZED' ORDER BY local_last_modified ASC",
     returnValue: 'resultRows',
@@ -600,7 +600,7 @@ const flushPendingChanges = async (proxyUrl: string, authToken: string) => {
   }
 };
 
-const addBookmark = async (proxyUrl: string, authToken: string, b: any) => {
+const addBookmark = async (proxyUrl, authToken, b) => {
   const url = new URL(`${proxyUrl}/posts/add`);
   const params = new URLSearchParams({
     auth_token: authToken,
@@ -620,7 +620,7 @@ const addBookmark = async (proxyUrl: string, authToken: string, b: any) => {
   if (data.result_code !== 'done') throw new Error(`Add failed: ${data.result_code}`);
 };
 
-const deleteBookmark = async (proxyUrl: string, authToken: string, href: string) => {
+const deleteBookmark = async (proxyUrl, authToken, href) => {
   const url = new URL(`${proxyUrl}/posts/delete`);
   const params = new URLSearchParams({
     auth_token: authToken,
@@ -637,7 +637,7 @@ const deleteBookmark = async (proxyUrl: string, authToken: string, href: string)
   }
 };
 
-const checkForUpdates = async (proxyUrl: string, authToken: string) => {
+const checkForUpdates = async (proxyUrl, authToken) => {
   // 1. Get last update time from server
   const updateUrl = `${proxyUrl}/posts/update?auth_token=${authToken}&format=json`;
   const response = await fetch(updateUrl);
@@ -679,7 +679,7 @@ const checkForUpdates = async (proxyUrl: string, authToken: string) => {
   }
 };
 
-const performDeltaSync = async (proxyUrl: string, authToken: string, fromdt: string, serverTime: string) => {
+const performDeltaSync = async (proxyUrl, authToken, fromdt, serverTime) => {
   console.log('[Worker] Performing Delta Sync...');
   const url = `${proxyUrl}/posts/all?auth_token=${authToken}&format=json${fromdt ? `&fromdt=${fromdt}` : ''}`;
   const response = await fetch(url);
@@ -689,7 +689,7 @@ const performDeltaSync = async (proxyUrl: string, authToken: string, fromdt: str
   if (bookmarks.length > 0) {
     // Reuse UPSERT_BATCH logic or similar
     // For simplicity, we just use the same logic as hydrateArchive but without progress
-    db.transaction((db: any) => {
+    db.transaction((db) => {
       const stmt = db.prepare(`
         INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified)
         VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?)
@@ -719,7 +719,7 @@ const performDeltaSync = async (proxyUrl: string, authToken: string, fromdt: str
   self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Delta sync complete.' } });
 };
 
-const performDatesHack = async (proxyUrl: string, authToken: string) => {
+const performDatesHack = async (proxyUrl, authToken) => {
   console.log('[Worker] Checking for invisible deletions (Dates Hack)...');
   const url = `${proxyUrl}/posts/dates?auth_token=${authToken}&format=json`;
   const response = await fetch(url);
@@ -745,7 +745,7 @@ const performDatesHack = async (proxyUrl: string, authToken: string) => {
   }
 };
 
-const reconcileDate = async (proxyUrl: string, authToken: string, date: string) => {
+const reconcileDate = async (proxyUrl, authToken, date) => {
   const url = `${proxyUrl}/posts/get?auth_token=${authToken}&format=json&dt=${date}`;
   const response = await fetch(url);
   if (!response.ok) return;
@@ -755,8 +755,8 @@ const reconcileDate = async (proxyUrl: string, authToken: string, date: string) 
 
   // Trigger the existing RECONCILE_DATE logic in worker
   // Actually we can just call the logic directly here
-  const serverHrefs = new Set(serverBookmarks.map((b: any) => b.href));
-  db.transaction((db: any) => {
+  const serverHrefs = new Set(serverBookmarks.map((b) => b.href));
+  db.transaction((db) => {
     const localRecords = db.exec({
       sql: "SELECT href FROM bookmarks WHERE strftime('%Y-%m-%d', time) = ?",
       bind: [date],

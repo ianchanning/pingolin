@@ -41,7 +41,7 @@ type alias Model =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { token = ""
-      , proxyUrl = "https://YOUR_PROXY_URL_HERE"
+      , proxyUrl = "https://pinboard-proxy.ian-pinboard-proxy.workers.dev/"
       , query = ""
       , status = "Awaiting Ritual..."
       , bookmarks = []

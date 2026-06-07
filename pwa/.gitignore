@@ -1,7 +1,10 @@
 node_modules/
+elm-stuff/
+public/main.js
 dist/
 .env
 *.db
 *.db-journal
 *.db-shm
 *.db-wal
+test-results/
