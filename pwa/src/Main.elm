@@ -2,7 +2,7 @@ port module Main exposing (main)
 
 import Browser
 import Html exposing (Html, div, text, button, input, h1)
-import Html.Attributes exposing (placeholder, value, type_, class, style)
+import Html.Attributes exposing (placeholder, value, type_, class, style, attribute)
 import Html.Events exposing (onClick, onInput)
 import Json.Encode as Encode
 import Json.Decode as Decode exposing (Decoder)
@@ -187,17 +187,17 @@ view : Model -> Html Msg
 view model =
     div [ class "pingolin-fortress" ]
         [ h1 [] [ text "PINGOLIN" ]
-        , div [ class "ritual-controls" ]
-            [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken ] []
+        , div [ class "ritual-controls", attribute "data-testid" "login-container" ]
+            [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
             , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
-            , button [ onClick StartSync ] [ text "Initialize Sync" ]
+            , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
             ]
         , div [ class "search-chamber" ]
-            [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery ] [] ]
+            [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] [] ]
         , div [ class "status-chamber" ]
-            [ div [] [ text ("STATE: " ++ model.status) ]
+            [ div [ attribute "data-testid" "sync-status" ] [ text ("STATE: " ++ model.status) ]
             , if model.progress > 0 && model.progress < 1.0 then
-                div [ class "progress-bar" ] 
+                div [ class "progress-bar", attribute "data-testid" "sync-progress" ] 
                     [ div [ class "progress-fill", style "width" (String.fromFloat (model.progress * 100) ++ "%") ] [] ]
               else
                 text ""
@@ -208,7 +208,7 @@ view model =
 
 viewBookmark : Bookmark -> Html Msg
 viewBookmark b =
-    div [ class "bookmark-shrine" ]
+    div [ class "bookmark-shrine", attribute "data-testid" "bookmark-item" ]
         [ div [ class "href" ] [ text b.href ]
         , div [ class "desc" ] [ text b.description ]
         , div [ class "tags" ] [ text (String.join " · " b.tags) ]
