@@ -46,12 +46,21 @@
             top: 48px;
             left: 10%;
             margin: 0;
+            padding-left: 70px;
             font-size: 3rem;
             font-family: Georgia, serif;
             color: var(--fg);
             letter-spacing: -2px;
             font-weight: normal;
         }
+        #masthead-logo {
+            position: absolute;
+            top: 34px;
+            left: 10%;
+            height: 60px;
+            z-index: 10;
+        }
+
         
         .pingolin-fortress { 
             padding: 0; 
@@ -90,7 +99,8 @@
         
         button { 
             background: var(--accent); 
-            border: 1px solid #8B8B5C;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
             color: #FFF; 
             padding: 4px 10px; 
             font-weight: bold; 

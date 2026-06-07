@@ -1,8 +1,8 @@
 port module Main exposing (main)
 
 import Browser
-import Html exposing (Html, div, text, button, input, h1)
-import Html.Attributes exposing (placeholder, value, type_, class, style, attribute)
+import Html exposing (Html, div, text, button, input, h1, img)
+import Html.Attributes exposing (placeholder, value, type_, class, style, attribute, src)
 import Html.Events exposing (onClick, onInput)
 import Json.Encode as Encode
 import Json.Decode as Decode exposing (Decoder)
@@ -317,6 +317,7 @@ view model =
         [ div [ attribute "id" "masthead" ]
             [ div [ class "top-bar" ] 
                 [ text (if model.isOnline then "ONLINE | STEEL & STONE" else "OFFLINE | CHAOS DETECTED") ]
+            , img [ src "/pangolin_trans.png", attribute "id" "masthead-logo" ] []
             , h1 [] [ text "pingolin" ]
             ]
         , div [ attribute "id" "contain" ]
