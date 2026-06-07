@@ -33,7 +33,7 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that per
 
 ## Phase 3: The "Brutal" UI (Elm Presentation Layer)
 **Goal:** Build the unidirectional, crash-free presentation layer using Elm.
-- [x] **Workspace Setup:** Configure `package.json`, `Main.elm`, and `vite.config.js` with the required COOP/COEP headers to enable OPFS.
+- [x] **Workspace Setup:** Configure `package.json` and `Main.elm` for "Raw Metal" compilation; use `http-server` with COOP/COEP headers for 30Y durability.
 - [x] **Domain Modeling:** Define the `Bookmark` record, `SyncStatus` union types, and the pure Model-View-Update (TEA) structure.
 - [x] **The Ports Bridge:** Setup outgoing (`toWorker`) and incoming (`fromWorker`) ports to communicate with `sync-worker.js`.
 - [x] **Robust Decoders:** Write Elm `Json.Decode` schemas to validate, type-enforce, and clean incoming SQLite records at the port boundary.
