@@ -351,7 +351,7 @@ class SyncOrchestrator {
     this.isSyncing = true;
     this.needsSync = false;
     this.syncIndicator.style.display = 'block';
-    
+
     const statusEl = document.getElementById('status');
     const originalStatus = statusEl ? statusEl.innerHTML : '';
     if (statusEl) statusEl.textContent = 'Syncing...';
@@ -396,7 +396,7 @@ class SyncOrchestrator {
       let sentinelSuccess = true;
       const now = Date.now();
       const oneHour = 1000 * 60 * 60;
-      
+
       if (forceSentinel || (now - lastSentinelRunTime > oneHour)) {
         sentinelSuccess = await this.runDatesSentinel();
         if (sentinelSuccess) {
@@ -712,7 +712,7 @@ const populateTagSuggestions = async (inputVal: string = '') => {
   if (state.popularTags.length === 0) {
     state.popularTags = await db.getPopularTags();
   }
-  
+
   if (state.aliases.length === 0) {
     if (!state.aliasPromise) {
       state.aliasPromise = db.getTagAliases().then(aliases => {
@@ -730,7 +730,7 @@ const populateTagSuggestions = async (inputVal: string = '') => {
   const trimmedInput = inputVal.trim();
   const lastSpaceIndex = trimmedInput.lastIndexOf(' ');
   const currentWord = trimmedInput.substring(lastSpaceIndex + 1).toLowerCase();
-  
+
   const displaySpaceIndex = inputVal.lastIndexOf(' ');
   const prefix = displaySpaceIndex === -1 ? '' : inputVal.substring(0, displaySpaceIndex + 1);
 
@@ -740,7 +740,7 @@ const populateTagSuggestions = async (inputVal: string = '') => {
     .map((a: any) => a.mapped_tag) : [];
 
   // Prefix Match Heuristic: Filter popular tags by the current word being typed
-  const filteredPopular = currentWord 
+  const filteredPopular = currentWord
     ? state.popularTags.filter((t: string) => t.toLowerCase().startsWith(currentWord))
     : state.popularTags;
 
@@ -796,7 +796,7 @@ const initApp = async () => {
   const updateUIState = async (currentViewCount: number, isSearch: boolean) => {
     const hasToken = !!(await db.getMetadata('auth_token'))?.value;
     const hasSynced = !!(await db.getMetadata('last_full_sync_time'))?.value;
-    
+
     // Check if we have ANY data in the DB for locking logic
     const totalCount = await db.getBookmarkCount();
     const hasData = totalCount > 0;
@@ -966,7 +966,6 @@ const initApp = async () => {
 
       // 2. Refresh UI immediately
       await refreshData();
-      popularTagsCache = [];
       await populateTagSuggestions();
 
       // 3. Trigger background sync immediately
@@ -1019,13 +1018,13 @@ const initApp = async () => {
           state.aliasPromise = null;
         }
         await populateTagSuggestions();
-        } catch (err) {
+      } catch (err) {
         console.error('Sync Failed:', err);
         statusEl.textContent = 'Error: ' + err;
         sync.setBusy(false);
-        } finally {
+      } finally {
         syncButton.disabled = false;
-        }
+      }
 
     };
 
