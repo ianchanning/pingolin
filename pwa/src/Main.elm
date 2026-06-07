@@ -1,8 +1,8 @@
 port module Main exposing (main)
 
 import Browser
-import Html exposing (Html, div, text, button, input, h1, img)
-import Html.Attributes exposing (placeholder, value, type_, class, style, attribute, src)
+import Html exposing (Html, div, text, button, input, h1, img, h3, a)
+import Html.Attributes exposing (placeholder, value, type_, class, style, attribute, src, href, target)
 import Html.Events exposing (onClick, onInput)
 import Json.Encode as Encode
 import Json.Decode as Decode exposing (Decoder)
@@ -388,10 +388,6 @@ viewIndexedBookmark (index, b) =
     div 
         [ class "bookmark-shrine"
         , attribute "data-testid" "bookmark-item"
-        , style "position" "absolute"
-        , style "top" "0"
-        , style "left" "0"
-        , style "right" "0"
         , style "height" (String.fromInt rowHeight ++ "px")
         , style "transform" ("translateY(" ++ String.fromInt (index * rowHeight) ++ "px)")
         , style "will-change" "transform"
@@ -400,8 +396,7 @@ viewIndexedBookmark (index, b) =
             div [ class "pending-icon", attribute "data-testid" "pending-icon" ] [ text "🔄" ]
           else
             text ""
-        , div [ class "desc" ] [ text b.description ]
-        , div [ class "href" ] [ text b.href ]
+        , h3 [] [ a [ href b.href, target "_blank" ] [ text b.description ] ]
         , div [ class "tags" ] 
             [ Html.label [] [ text "Tags: " ]
             , text (String.join ", " b.tags) 

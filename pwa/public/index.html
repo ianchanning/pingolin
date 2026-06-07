@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pingolin</title>
+    <title>pingolin</title>
     <link rel="icon" href="/favicon.ico">
     <style>
         :root { 
@@ -133,23 +133,37 @@
         
         .bookmark-shrine { 
             padding: 1rem 0; 
-            border-bottom: 1px dotted #996; 
             box-sizing: border-box; 
             background: transparent; 
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
         }
         .bookmark-shrine:hover { background: #f9f9f9; }
         
-        .desc { 
+        .bookmark-shrine h3 {
+            margin: 0 0 0.3rem 0;
             font-family: Georgia, serif;
             font-size: 1.1em;
-            font-weight: bold; 
-            color: #369; 
-            margin-bottom: 0.3rem; 
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-weight: bold;
         }
-        .href { font-size: 0.75rem; color: #666; margin-bottom: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .tags { font-size: 0.85em; color: #330; }
-        .tags label { color: #666; font-weight: normal; margin-right: 4px; }
+        
+        .a {
+            color: #369;
+            text-decoration: none;
+        }
+        .a:hover {
+            color: #69C;
+        }
+        
+        .tags { 
+            font-size: 0.85em;
+            color: #330;
+            border-top: 1px dotted #996;
+            margin-top: 10px;
+            padding: 0.4em 0 0.6em;
+        }
         
         .pending-icon { float: right; color: var(--accent); font-size: 1.2em; }
         
