@@ -108,7 +108,7 @@ workerMessageDecoder : Decoder WorkerMsg
 workerMessageDecoder =
     Decode.map2 (\typeName id -> { typeName = typeName, id = id })
         (Decode.field "type" Decode.string)
-        (Decode.field "id" (Decode.oneOf [ Decode.string, Decode.succeed "" ]))
+        (Decode.oneOf [ Decode.field "id" Decode.string, Decode.succeed "" ])
         |> Decode.andThen
             (\{ typeName, id } ->
                 case typeName of

@@ -47,3 +47,17 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that per
 - [x] Ensure all Elm elements expose the correct `data-testid` properties.
 - [ ] Execute all the automated scenarios (bootstrap, offline persistence, exact tag matching, deep-link persistence, self-healing).
 - [ ] Verify that your test suite passes with **zero runtime exceptions** thrown in the browser console.
+
+---
+
+## Known Bugs & Issues (To Be Addressed)
+
+1.  **Mobile Refresh Deadlock:** Users cannot refresh the local cache on mobile devices.
+2.  **Pull-to-Refresh Missing:** Standard "Pull down to refresh" gesture is not implemented, preventing manual refresh in installed PWA mode.
+3.  **Ghost Count Persistence:** Even after manual refreshes or browser restarts, the bookmark count sometimes fails to update to reflect the actual database state.
+4.  **Sync Visibility Lag:** Sync success is not always obvious in the UI; new links may only appear after performing and clearing a search (suggesting a reactive refresh issue).
+5.  **CI Deprecation:** GitHub Actions runner is using Node.js 20, which is deprecated for actions. Need to move to Node.js 24.
+6.  **Login Flash on Refresh:** Refreshing the page temporarily displays the login form while the worker restores the session.
+7.  **Session Restore Decode Error:** A "Ritual Failure" error appears during session restoration because the incoming message is missing an expected `id` field.
+
+
