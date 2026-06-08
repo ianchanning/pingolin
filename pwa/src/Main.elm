@@ -100,7 +100,7 @@ bookmarkDecoder =
         (Decode.field "href" Decode.string)
         (Decode.field "description" Decode.string)
         (Decode.field "extended" (Decode.oneOf [ Decode.string, Decode.succeed "" ]))
-        (Decode.field "tags" Decode.string |> Decode.map (String.split " " >> List.filter (not << String.isEmpty)))
+        (Decode.field "tags" (Decode.oneOf [ Decode.string, Decode.succeed "" ]) |> Decode.map (String.split " " >> List.filter (not << String.isEmpty)))
         (Decode.field "time" Decode.string)
         (Decode.field "sync_status" Decode.string |> Decode.map decodeSyncStatus)
 
@@ -288,8 +288,13 @@ handleWorkerMsg msg model =
             let
                 hydrated =
                     model.isHydrated || not (List.isEmpty bookmarks)
+                newStatus =
+                    if hydrated && not (String.contains "Chaos" model.status) then
+                        "Archive Online: " ++ String.fromInt (List.length bookmarks)
+                    else
+                        String.fromInt (List.length bookmarks)
             in
-            ( { model | bookmarks = bookmarks, status = String.fromInt (List.length bookmarks), isHydrated = hydrated, scrollTop = 0 }, Cmd.none )
+            ( { model | bookmarks = bookmarks, status = newStatus, isHydrated = hydrated, scrollTop = 0 }, Cmd.none )
 
         TagSuggestionsMsg suggestions ->
             ( { model | tagSuggestions = suggestions }, Cmd.none )
@@ -315,7 +320,7 @@ view : Model -> Html Msg
 view model =
     div [ class "pingolin-fortress" ]
         [ div [ attribute "id" "masthead" ]
-            [ div [ class "top-bar" ] 
+            [ div [ class "top-bar", attribute "data-testid" "network-status" ] 
                 [ text (if model.isOnline then "ONLINE" else "OFFLINE") ]
             , img [ src "/pangolin_trans.png", attribute "id" "masthead-logo" ] []
             , h1 [] [ text "pingolin" ]

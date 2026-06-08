@@ -45,5 +45,5 @@ A 5-phase approach to building a zero-maintenance, 30-year-lifespan PWA that per
 **Goal:** Validate the Elm UI's behavior as a black box using your existing test suite.
 - [x] Create Page Object Models (`AppPage`, `AddForm`, `BookmarkItem`) targeting Elm's DOM selectors.
 - [x] Ensure all Elm elements expose the correct `data-testid` properties.
-- [ ] Execute the 12 automated scenarios (bootstrap, offline persistence, exact tag matching, deep-link persistence, self-healing).
+- [ ] Execute all the automated scenarios (bootstrap, offline persistence, exact tag matching, deep-link persistence, self-healing).
 - [ ] Verify that your test suite passes with **zero runtime exceptions** thrown in the browser console.

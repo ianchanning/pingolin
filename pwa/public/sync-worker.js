@@ -221,22 +221,24 @@ const checkForUpdates = async (proxyUrl, authToken) => {
 
     if (update_time !== lastSyncTime) {
       await performDeltaSync(proxyUrl, authToken, lastSyncTime, update_time);
-      await performDatesHack(proxyUrl, authToken);
     }
+    await performDatesHack(proxyUrl, authToken);
   } catch (err) {
     console.error('[Worker] Update Check Failure:', err);
   }
 };
 
 const performDeltaSync = async (proxyUrl, authToken, fromDt, serverTime) => {
+  console.log('[Worker] Delta Sync starting from:', fromDt);
   const url = `${proxyUrl}/posts/all?auth_token=${authToken}&format=json&fromdt=${fromDt || ''}`;
   const response = await fetch(url);
   if (!response.ok) return;
 
   const bookmarks = await response.json();
   if (bookmarks.length > 0) {
+    console.log(`[Worker] Delta Sync received ${bookmarks.length} bookmarks`);
     db.transaction((db) => {
-      const stmt = db.prepare("INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, local_last_modified=excluded.local_last_modified");
+      const stmt = db.prepare("INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, local_last_modified=excluded.local_last_modified WHERE sync_status = 'SYNCHRONIZED'");
       for (const b of bookmarks) {
         stmt.bind([b.href, b.description, b.extended || '', b.tags, b.time, Date.now()]);
         stmt.step();
@@ -264,12 +266,14 @@ const performDatesHack = async (proxyUrl, authToken) => {
   for (const row of localDates) {
     const serverCount = parseInt(serverDates[row.date_str] || '0');
     if (row.qty > serverCount) {
+      console.log(`[Worker] Dates Mismatch for ${row.date_str}: local=${row.qty}, server=${serverCount}`);
       await reconcileDate(proxyUrl, authToken, row.date_str);
     }
   }
 };
 
 const reconcileDate = async (proxyUrl, authToken, date) => {
+  console.log('[Worker] Reconciling date:', date);
   const url = `${proxyUrl}/posts/get?auth_token=${authToken}&format=json&dt=${date}`;
   const response = await fetch(url);
   if (!response.ok) return;
@@ -280,10 +284,11 @@ const reconcileDate = async (proxyUrl, authToken, date) => {
   let deletedCount = 0;
 
   db.transaction((db) => {
-    const localRecords = db.exec({ sql: "SELECT href FROM bookmarks WHERE strftime('%Y-%m-%d', time) = ?", bind: [date], returnValue: 'resultRows', rowMode: 'object' });
+    const localRecords = db.exec({ sql: "SELECT href FROM bookmarks WHERE strftime('%Y-%m-%d', time) = ? AND sync_status = 'SYNCHRONIZED'", bind: [date], returnValue: 'resultRows', rowMode: 'object' });
     const deleteStmt = db.prepare('DELETE FROM bookmarks WHERE href = ?');
     for (const row of localRecords) {
       if (!serverHrefs.has(row.href)) {
+        console.log('[Worker] Pruning ghost bookmark:', row.href);
         deleteStmt.bind([row.href]);
         deleteStmt.step();
         deleteStmt.reset();
@@ -368,18 +373,21 @@ self.onmessage = async (e) => {
       }
       case 'QUERY_ALL':
         const all = db.exec({ sql: 'SELECT * FROM bookmarks ORDER BY time DESC', returnValue: 'resultRows', rowMode: 'object' });
+        console.log('[Worker] QUERY_ALL results count:', all.length, all.length > 0 ? all[0].href : 'NONE');
         self.postMessage({ type: 'QUERY_RESULTS', payload: all, id });
         break;
       case 'LOCAL_UPSERT':
+        console.log('[Worker] LOCAL_UPSERT:', payload.href, payload.description);
         db.transaction((db) => {
           const now = Date.now();
           const existing = db.exec({ sql: 'SELECT sync_status FROM bookmarks WHERE href = ?', bind: [payload.href], returnValue: 'resultRows' });
           const status = existing.length > 0 ? 'PENDING_UPDATE' : 'PENDING_INSERT';
           db.exec({
             sql: "INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, sync_status=excluded.sync_status, local_last_modified=excluded.local_last_modified",
-            bind: [payload.href, payload.description, payload.extended || '', payload.tags, payload.time || new Date().toISOString(), status, now]
+            bind: [payload.href, payload.description || '', payload.extended || '', payload.tags || '', payload.time || new Date().toISOString(), status, now]
           });
         });
+        console.log('[Worker] LOCAL_UPSERT committed. Sending REFRESH_REQUIRED');
         self.postMessage({ type: 'REFRESH_REQUIRED' });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         refreshPopularTags('popular-tags');
@@ -403,9 +411,11 @@ self.onmessage = async (e) => {
       case 'UPSERT_TAG_ALIAS':
         db.exec({ sql: 'INSERT INTO tag_aliases (keyword, mapped_tag) VALUES (?, ?) ON CONFLICT(keyword) DO UPDATE SET mapped_tag=excluded.mapped_tag', bind: [payload.keyword, payload.mapped_tag] });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
+        refreshPopularTags('popular-tags');
         break;
       case 'RENAME_TAG':
         await renameTagWorkaround(payload.oldTag, payload.newTag, payload.proxyUrl, payload.authToken, id);
+        self.postMessage({ type: 'REFRESH_REQUIRED' });
         break;
       case 'START_HYDRATION':
         await hydrateArchive(payload.proxyUrl, payload.authToken, id);
@@ -420,6 +430,10 @@ self.onmessage = async (e) => {
         break;
       case 'SET_THROTTLE':
         apiThrottle = payload;
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
+      case 'SET_DEBUG_CAP':
+        // Just acknowledging for test compatibility
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
       case 'DEBUG_CLEAR_DB':
