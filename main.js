@@ -5508,15 +5508,12 @@ var $author$project$Main$workerMessageDecoder = A2(
 				return {ag: id, aw: typeName};
 			}),
 		A2($elm$json$Json$Decode$field, 'type', $elm$json$Json$Decode$string),
-		A2(
-			$elm$json$Json$Decode$field,
-			'id',
-			$elm$json$Json$Decode$oneOf(
-				_List_fromArray(
-					[
-						$elm$json$Json$Decode$string,
-						$elm$json$Json$Decode$succeed('')
-					])))));
+		$elm$json$Json$Decode$oneOf(
+			_List_fromArray(
+				[
+					A2($elm$json$Json$Decode$field, 'id', $elm$json$Json$Decode$string),
+					$elm$json$Json$Decode$succeed('')
+				]))));
 var $author$project$Main$update = F2(
 	function (msg, model) {
 		switch (msg.$) {
