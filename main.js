@@ -5228,7 +5228,7 @@ var $author$project$Main$init = function (flags) {
 			o: initialQuery,
 			E: 0,
 			F: false,
-			m: 'Awaiting Ritual...',
+			k: 'Awaiting Ritual...',
 			M: _List_Nil,
 			O: '',
 			S: 800
@@ -5296,27 +5296,24 @@ var $author$project$Main$handleWorkerMsg = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{t: progress, m: status}),
+						{t: progress, k: status}),
 					$elm$core$Platform$Cmd$none);
 			case 1:
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{y: true, t: 1.0, m: 'Archive Restored. Finalizing...'}),
+						{y: true, t: 1.0, k: 'Archive Restored. Finalizing...'}),
 					$author$project$Main$queryAll);
 			case 2:
 				var bookmarks = msg.a;
 				var hydrated = model.y || (!$elm$core$List$isEmpty(bookmarks));
+				var newStatus = (hydrated && (!A2($elm$core$String$contains, 'Chaos', model.k))) ? ('Archive Online: ' + $elm$core$String$fromInt(
+					$elm$core$List$length(bookmarks))) : $elm$core$String$fromInt(
+					$elm$core$List$length(bookmarks));
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{
-							J: bookmarks,
-							y: hydrated,
-							E: 0,
-							m: $elm$core$String$fromInt(
-								$elm$core$List$length(bookmarks))
-						}),
+						{J: bookmarks, y: hydrated, E: 0, k: newStatus}),
 					$elm$core$Platform$Cmd$none);
 			case 3:
 				var suggestions = msg.a;
@@ -5330,7 +5327,7 @@ var $author$project$Main$handleWorkerMsg = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{m: 'Worker Chaos: ' + err}),
+						{k: 'Worker Chaos: ' + err}),
 					$elm$core$Platform$Cmd$none);
 			case 5:
 				return (model.o === '') ? _Utils_Tuple2(model, $author$project$Main$queryAll) : _Utils_Tuple2(
@@ -5340,7 +5337,7 @@ var $author$project$Main$handleWorkerMsg = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{y: true, m: 'Session Restored.'}),
+						{y: true, k: 'Session Restored.'}),
 					$author$project$Main$queryAll);
 			default:
 				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
@@ -5431,7 +5428,15 @@ var $author$project$Main$bookmarkDecoder = A7(
 			$elm$core$String$split(' '),
 			$elm$core$List$filter(
 				A2($elm$core$Basics$composeL, $elm$core$Basics$not, $elm$core$String$isEmpty))),
-		A2($elm$json$Json$Decode$field, 'tags', $elm$json$Json$Decode$string)),
+		A2(
+			$elm$json$Json$Decode$field,
+			'tags',
+			$elm$json$Json$Decode$oneOf(
+				_List_fromArray(
+					[
+						$elm$json$Json$Decode$string,
+						$elm$json$Json$Decode$succeed('')
+					])))),
 	A2($elm$json$Json$Decode$field, 'time', $elm$json$Json$Decode$string),
 	A2(
 		$elm$json$Json$Decode$map,
@@ -5567,7 +5572,7 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{t: 0.1, m: 'Summoning Archive...'}),
+						{t: 0.1, k: 'Summoning Archive...'}),
 					$author$project$Main$toWorker(payload));
 			case 4:
 				var val = msg.a;
@@ -5581,7 +5586,7 @@ var $author$project$Main$update = F2(
 						_Utils_update(
 							model,
 							{
-								m: 'Ritual Failure: ' + $elm$json$Json$Decode$errorToString(err)
+								k: 'Ritual Failure: ' + $elm$json$Json$Decode$errorToString(err)
 							}),
 						$elm$core$Platform$Cmd$none);
 				}
@@ -6130,7 +6135,8 @@ var $author$project$Main$view = function (model) {
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('top-bar')
+								$elm$html$Html$Attributes$class('top-bar'),
+								A2($elm$html$Html$Attributes$attribute, 'data-testid', 'network-status')
 							]),
 						_List_fromArray(
 							[
@@ -6217,7 +6223,7 @@ var $author$project$Main$view = function (model) {
 									]),
 								_List_fromArray(
 									[
-										$elm$html$Html$text(model.m)
+										$elm$html$Html$text(model.k)
 									])),
 								((model.t > 0) && (model.t < 1.0)) ? A2(
 								$elm$html$Html$div,
