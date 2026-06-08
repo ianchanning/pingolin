@@ -1720,6 +1720,174 @@ body.error_404 div#main ul li {
   list-style: disc inside;
 }
 
-body.error_404 div#main p {
-  margin-top: 3em;
+/* PWA Steel & Stone Enhancements */
+
+.pingolin-fortress {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 1200px;
+  margin: 0 auto;
+  overflow: hidden;
 }
+
+#masthead {
+  flex-shrink: 0;
+  position: relative;
+}
+
+#contain {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 0 5% !important;
+  min-width: 0 !important;
+}
+
+.top-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: bold;
+  text-align: center;
+  background: #eee;
+  color: #666;
+  z-index: 1000;
+}
+
+[data-testid="network-status"] {
+  background: #9EB847;
+  color: white;
+}
+
+.status-chamber {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px dotted #996;
+}
+
+.status-text {
+  font-size: 0.9em;
+  color: #663;
+}
+
+.refresh-btn {
+  background: none;
+  border: 1px solid #996;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #933100;
+  font-weight: bold;
+  transition: transform 0.3s;
+}
+
+.refresh-btn:active {
+  transform: rotate(180deg);
+}
+
+.progress-bar {
+  flex-grow: 1;
+  height: 4px;
+  background: #eee;
+  margin-left: 10px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #9EB847;
+  transition: width 0.3s;
+}
+
+.search-chamber {
+  display: flex;
+  margin: 10px 0;
+}
+
+.search-chamber input {
+  flex-grow: 1;
+  padding: 8px;
+  border: 2px solid #9EB847;
+  border-radius: 4px 0 0 4px;
+}
+
+#toggle-add-btn {
+  background: #9EB847;
+  color: white;
+  border: none;
+  width: 40px;
+  font-size: 24px;
+  cursor: pointer;
+  border-radius: 0 4px 4px 0;
+}
+
+.add-form {
+  background: #F2F2DE;
+  padding: 15px;
+  border: 2px solid #9EB847;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.add-form input {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.archive-scroll-container {
+  flex-grow: 1;
+  overflow-y: auto;
+  position: relative;
+  border: 1px solid #eee;
+  -webkit-overflow-scrolling: touch;
+}
+
+.archive-height-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.bookmark-shrine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 120px;
+  padding: 15px;
+  border-bottom: 1px dotted #ccc;
+  box-sizing: border-box;
+  background: white;
+}
+
+.pending-icon {
+  float: right;
+  font-size: 20px;
+}
+
+.tags a {
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+@media (max-width: 600px) {
+  #contain { margin: 0 2% !important; }
+  #masthead img { left: 2%; }
+  h1 { font-size: 1.2em; margin-left: 50px; }
+}
+
