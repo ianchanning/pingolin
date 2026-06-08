@@ -79,14 +79,26 @@ const initDb = async (dbName = '/pinboard.db') => {
 
     // Check for existing session
     const meta = db.exec({
-      sql: "SELECT value FROM metadata WHERE key = 'last_full_sync_time'",
+      sql: "SELECT key, value FROM metadata WHERE key IN ('last_full_sync_time', 'auth_token', 'proxy_url')",
       returnValue: 'resultRows',
       rowMode: 'object'
     });
 
-    if (meta.length > 0) {
-      console.log('[Worker] Session Detected:', meta[0].value);
-      self.postMessage({ type: 'SESSION_RESTORED', payload: meta[0].value });
+    const session = {};
+    for (const row of meta) {
+      session[row.key] = row.value;
+    }
+
+    if (session.last_full_sync_time) {
+      console.log('[Worker] Session Detected:', session.last_full_sync_time);
+      self.postMessage({ 
+        type: 'SESSION_RESTORED', 
+        payload: { 
+          lastSync: session.last_full_sync_time,
+          token: session.auth_token || '',
+          proxyUrl: session.proxy_url || ''
+        } 
+      });
     }
 
     return true;
@@ -99,6 +111,41 @@ const initDb = async (dbName = '/pinboard.db') => {
 let syncLoopActive = false;
 let syncInterval = 60000;
 let apiThrottle = 3000;
+
+const fetchRitual = async (baseUrl, path, params = {}) => {
+  if (!baseUrl || baseUrl === '') {
+    console.error(`[Worker] Ritual Void Failure: No Base URL for path ${path}`);
+    return null;
+  }
+
+  try {
+    const sanitizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    // Use the 2-arg constructor to safely join relative path to absolute base
+    // Note: path must not have leading slash for proper joining if base has trailing, 
+    // but URL constructor handles '/path' vs 'path' reasonably well if base is absolute.
+    const url = new URL(path.replace(/^\//, ''), sanitizedBase);
+    url.search = new URLSearchParams({ ...params, cb: Date.now() }).toString();
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      console.warn(`[Worker] Ritual HTTP Failure (${response.status}) at ${path}`);
+      return null;
+    }
+
+    const text = await response.text();
+    if (!text || text.trim() === '') return null;
+
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      console.error(`[Worker] Ritual Alchemy Failure (Non-JSON) at ${path}. Content:`, text.substring(0, 100));
+      return null;
+    }
+  } catch (err) {
+    console.error(`[Worker] Ritual Network Failure at ${path}:`, err);
+    return null;
+  }
+};
 
 const startSyncLoop = (proxyUrl, authToken) => {
   if (syncLoopActive) return;
@@ -196,12 +243,12 @@ const flushPendingChanges = async (proxyUrl, authToken) => {
 };
 
 const checkForUpdates = async (proxyUrl, authToken) => {
+  if (!authToken) return;
   try {
-    const url = `${proxyUrl}/posts/update?auth_token=${authToken}&format=json`;
-    const response = await fetch(url);
-    if (!response.ok) return;
+    const data = await fetchRitual(proxyUrl, '/posts/update', { auth_token: authToken, format: 'json' });
+    if (!data) return;
 
-    const { update_time } = await response.json();
+    const { update_time } = data;
     
     const lastSync = db.exec({
       sql: "SELECT value FROM metadata WHERE key = 'last_sync_time'",
@@ -223,6 +270,7 @@ const checkForUpdates = async (proxyUrl, authToken) => {
       await performDeltaSync(proxyUrl, authToken, lastSyncTime, update_time);
     }
     await performDatesHack(proxyUrl, authToken);
+    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Archive is current.', progress: 1.0 } });
   } catch (err) {
     console.error('[Worker] Update Check Failure:', err);
   }
@@ -230,12 +278,9 @@ const checkForUpdates = async (proxyUrl, authToken) => {
 
 const performDeltaSync = async (proxyUrl, authToken, fromDt, serverTime) => {
   console.log('[Worker] Delta Sync starting from:', fromDt);
-  const url = `${proxyUrl}/posts/all?auth_token=${authToken}&format=json&fromdt=${fromDt || ''}`;
-  const response = await fetch(url);
-  if (!response.ok) return;
-
-  const bookmarks = await response.json();
-  if (bookmarks.length > 0) {
+  const bookmarks = await fetchRitual(proxyUrl, '/posts/all', { auth_token: authToken, format: 'json', fromdt: fromDt || '' });
+  
+  if (bookmarks && bookmarks.length > 0) {
     console.log(`[Worker] Delta Sync received ${bookmarks.length} bookmarks`);
     db.transaction((db) => {
       const stmt = db.prepare("INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, local_last_modified=excluded.local_last_modified WHERE sync_status = 'SYNCHRONIZED'");
@@ -255,11 +300,9 @@ const performDeltaSync = async (proxyUrl, authToken, fromDt, serverTime) => {
 };
 
 const performDatesHack = async (proxyUrl, authToken) => {
-  const url = `${proxyUrl}/posts/dates?auth_token=${authToken}&format=json`;
-  const response = await fetch(url);
-  if (!response.ok) return;
+  const data = await fetchRitual(proxyUrl, '/posts/dates', { auth_token: authToken, format: 'json' });
+  if (!data) return;
 
-  const data = await response.json();
   const serverDates = data.dates || {};
   const localDates = db.exec({ sql: "SELECT strftime('%Y-%m-%d', time) as date_str, COUNT(*) as qty FROM bookmarks GROUP BY date_str", returnValue: 'resultRows', rowMode: 'object' });
 
@@ -274,11 +317,9 @@ const performDatesHack = async (proxyUrl, authToken) => {
 
 const reconcileDate = async (proxyUrl, authToken, date) => {
   console.log('[Worker] Reconciling date:', date);
-  const url = `${proxyUrl}/posts/get?auth_token=${authToken}&format=json&dt=${date}`;
-  const response = await fetch(url);
-  if (!response.ok) return;
+  const data = await fetchRitual(proxyUrl, '/posts/get', { auth_token: authToken, format: 'json', dt: date });
+  if (!data) return;
 
-  const data = await response.json();
   const serverBookmarks = data.posts || (Array.isArray(data) ? data : []);
   const serverHrefs = new Set(serverBookmarks.map((b) => b.href));
   let deletedCount = 0;
@@ -305,17 +346,26 @@ const reconcileDate = async (proxyUrl, authToken, date) => {
 };
 
 const addBookmark = async (proxyUrl, authToken, b) => {
-  const url = new URL(`${proxyUrl}/posts/add`);
-  url.search = new URLSearchParams({ auth_token: authToken, format: 'json', url: b.href, description: b.description, extended: b.extended || '', tags: b.tags, dt: b.time, replace: 'yes' }).toString();
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Add failed: ${res.status}`);
+  const data = await fetchRitual(proxyUrl, '/posts/add', { 
+    auth_token: authToken, 
+    format: 'json', 
+    url: b.href, 
+    description: b.description, 
+    extended: b.extended || '', 
+    tags: b.tags, 
+    dt: b.time, 
+    replace: 'yes' 
+  });
+  if (!data) throw new Error('Ritual Add Failure: No response');
 };
 
 const deleteBookmark = async (proxyUrl, authToken, href) => {
-  const url = new URL(`${proxyUrl}/posts/delete`);
-  url.search = new URLSearchParams({ auth_token: authToken, format: 'json', url: href }).toString();
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+  const data = await fetchRitual(proxyUrl, '/posts/delete', { 
+    auth_token: authToken, 
+    format: 'json', 
+    url: href 
+  });
+  if (!data) throw new Error('Ritual Delete Failure: No response');
 };
 
 const refreshPopularTags = (id) => {
@@ -421,6 +471,10 @@ self.onmessage = async (e) => {
         await hydrateArchive(payload.proxyUrl, payload.authToken, id);
         break;
       case 'START_SYNC_LOOP':
+        db.exec({
+          sql: "INSERT INTO metadata (key, value) VALUES ('auth_token', ?), ('proxy_url', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          bind: [payload.authToken, payload.proxyUrl]
+        });
         startSyncLoop(payload.proxyUrl, payload.authToken);
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
@@ -430,6 +484,10 @@ self.onmessage = async (e) => {
         break;
       case 'SET_THROTTLE':
         apiThrottle = payload;
+        self.postMessage({ type: 'EXEC_SUCCESS', id });
+        break;
+      case 'CHECK_FOR_UPDATES':
+        await checkForUpdates(payload.proxyUrl, payload.authToken);
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
       case 'SET_DEBUG_CAP':
@@ -453,9 +511,8 @@ self.onmessage = async (e) => {
 
 const hydrateArchive = async (proxyUrl, authToken, id) => {
   self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'NETWORK: Summing archive...', progress: 0.1 }, id });
-  const response = await fetch(`${proxyUrl}/posts/all?auth_token=${authToken}&format=json`);
-  if (!response.ok) throw new Error(`Server Ritual Error: ${response.status}`);
-  const bookmarks = await response.json();
+  const bookmarks = await fetchRitual(proxyUrl, '/posts/all', { auth_token: authToken, format: 'json' });
+  if (!bookmarks) throw new Error('Server Ritual Error: Empty or Invalid Archive');
   
   const CHUNK_SIZE = 1000;
   for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
@@ -473,7 +530,10 @@ const hydrateArchive = async (proxyUrl, authToken, id) => {
     await new Promise(r => setTimeout(r, 0));
   }
 
-  db.exec({ sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?), ('last_full_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", bind: [new Date().toISOString(), new Date().toISOString()] });
+  db.exec({ 
+    sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?), ('last_full_sync_time', ?), ('auth_token', ?), ('proxy_url', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", 
+    bind: [new Date().toISOString(), new Date().toISOString(), authToken, proxyUrl] 
+  });
   self.postMessage({ type: 'SYNC_COMPLETE', payload: { count: bookmarks.length }, id });
   self.postMessage({ type: 'REFRESH_REQUIRED' });
   refreshPopularTags('popular-tags');

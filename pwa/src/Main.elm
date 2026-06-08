@@ -56,6 +56,7 @@ type alias Model =
 
 type alias Flags =
     { query : Maybe String
+    , isHydrated : Bool
     }
 
 init : Flags -> ( Model, Cmd Msg )
@@ -67,11 +68,11 @@ init flags =
     ( { token = ""
       , proxyUrl = "https://pinboard-proxy.ian-pinboard-proxy.workers.dev/"
       , query = initialQuery
-      , status = "Awaiting Ritual..."
+      , status = "Awakening Ritual..."
       , bookmarks = []
       , progress = 0.0
       , isOnline = True
-      , isHydrated = False
+      , isHydrated = flags.isHydrated
       , showAddForm = False
       , tagSuggestions = []
       , scrollTop = 0
@@ -135,7 +136,11 @@ workerMessageDecoder =
                         Decode.succeed RefreshRequiredMsg
 
                     "SESSION_RESTORED" ->
-                        Decode.succeed SessionRestoredMsg
+                        Decode.at [ "payload" ]
+                            (Decode.map2 SessionRestoredMsg
+                                (Decode.oneOf [ Decode.field "token" Decode.string, Decode.succeed "" ])
+                                (Decode.oneOf [ Decode.field "proxyUrl" Decode.string, Decode.succeed "" ])
+                            )
 
                     _ ->
                         Decode.succeed UnknownMsg
@@ -148,7 +153,7 @@ type WorkerMsg
     | TagSuggestionsMsg (List String)
     | ErrorMsg String
     | RefreshRequiredMsg
-    | SessionRestoredMsg
+    | SessionRestoredMsg String String
     | UnknownMsg
 
 -- UPDATE (Pure Logic / Side-Effect Management)
@@ -168,6 +173,7 @@ type Msg
     | SetTagSuggestions (List String)
     | OnScroll Int
     | OnResize Int
+    | ManualRefresh
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -179,7 +185,7 @@ update msg model =
             ( { model | proxyUrl = proxy }, Cmd.none )
 
         SetQuery query ->
-            ( { model | query = query }, Cmd.batch [ querySearch query, updateUrl query ] )
+            ( { model | query = query, scrollTop = 0 }, Cmd.batch [ querySearch query, updateUrl query ] )
 
         StartSync ->
             let
@@ -258,6 +264,21 @@ update msg model =
         OnResize height ->
             ( { model | viewportHeight = height }, Cmd.none )
 
+        ManualRefresh ->
+            ( { model | status = "Syncing..." }
+            , toWorker <|
+                Encode.object
+                    [ ( "type", Encode.string "CHECK_FOR_UPDATES" )
+                    , ( "payload"
+                      , Encode.object
+                            [ ( "proxyUrl", Encode.string model.proxyUrl )
+                            , ( "authToken", Encode.string model.token )
+                            ]
+                      )
+                    , ( "id", Encode.string "manual-sync" )
+                    ]
+            )
+
 queryAll : Cmd msg
 queryAll =
     toWorker <|
@@ -282,19 +303,23 @@ handleWorkerMsg msg model =
             ( { model | status = status, progress = progress }, Cmd.none )
 
         SyncCompleteMsg ->
-            ( { model | status = "Archive Restored. Finalizing...", progress = 1.0, isHydrated = True }, queryAll )
+            ( { model | status = "Archive Restored. Finalizing...", progress = 1.0, isHydrated = True }
+            , Cmd.batch [ queryAll, startSyncLoop model.proxyUrl model.token ]
+            )
 
         QueryResultsMsg bookmarks ->
             let
                 hydrated =
                     model.isHydrated || not (List.isEmpty bookmarks)
+
                 newStatus =
                     if hydrated && not (String.contains "Chaos" model.status) then
                         "Archive Online: " ++ String.fromInt (List.length bookmarks)
+
                     else
                         String.fromInt (List.length bookmarks)
             in
-            ( { model | bookmarks = bookmarks, status = newStatus, isHydrated = hydrated, scrollTop = 0 }, Cmd.none )
+            ( { model | bookmarks = bookmarks, status = newStatus, isHydrated = hydrated }, Cmd.none )
 
         TagSuggestionsMsg suggestions ->
             ( { model | tagSuggestions = suggestions }, Cmd.none )
@@ -305,14 +330,54 @@ handleWorkerMsg msg model =
         RefreshRequiredMsg ->
             if model.query == "" then
                 ( model, queryAll )
+
             else
                 ( model, querySearch model.query )
 
-        SessionRestoredMsg ->
-            ( { model | isHydrated = True, status = "Session Restored." }, queryAll )
+        SessionRestoredMsg token proxyUrl ->
+            let
+                effectiveToken =
+                    if token == "" then
+                        model.token
+
+                    else
+                        token
+
+                effectiveProxy =
+                    if proxyUrl == "" then
+                        model.proxyUrl
+
+                    else
+                        proxyUrl
+
+                cmd =
+                    if effectiveToken /= "" && effectiveProxy /= "" then
+                        Cmd.batch [ queryAll, startSyncLoop effectiveProxy effectiveToken ]
+
+                    else
+                        queryAll
+            in
+            ( { model | isHydrated = True, status = "Session Restored.", token = effectiveToken, proxyUrl = effectiveProxy }
+            , cmd
+            )
 
         UnknownMsg ->
             ( model, Cmd.none )
+
+
+startSyncLoop : String -> String -> Cmd msg
+startSyncLoop proxyUrl token =
+    toWorker <|
+        Encode.object
+            [ ( "type", Encode.string "START_SYNC_LOOP" )
+            , ( "payload"
+              , Encode.object
+                    [ ( "proxyUrl", Encode.string proxyUrl )
+                    , ( "authToken", Encode.string token )
+                    ]
+              )
+            , ( "id", Encode.string "sync-loop" )
+            ]
 
 -- VIEW (Brutally Simple)
 
@@ -326,16 +391,17 @@ view model =
             , h1 [] [ text "pingolin" ]
             ]
         , div [ attribute "id" "contain" ]
-            [ if not model.isHydrated then
+            [ if not model.isHydrated || model.token == "" then
                 div [ class "ritual-controls", attribute "data-testid" "login-container" ]
                     [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
                     , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
                     , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
                     ]
+
               else
                 text ""
             , div [ class "status-chamber" ]
-                [ div [ attribute "data-testid" "sync-status" ] 
+                [ div [ attribute "data-testid" "sync-status", class "status-text" ] 
                     [ text (model.status) ]
                 , if model.progress > 0 && model.progress < 1.0 then
                     div [ class "progress-bar", attribute "data-testid" "sync-progress" ] 
@@ -346,6 +412,7 @@ view model =
             , div [ class "search-chamber" ]
                 [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] []
                 , button [ attribute "id" "toggle-add-btn", onClick ToggleAddForm ] [ text "+" ]
+                , button [ onClick ManualRefresh, class "refresh-btn", attribute "title" "Force Sync" ] [ text "↻" ]
                 ]
             , if model.showAddForm then
                 div [ class "add-form", attribute "data-testid" "add-form" ]

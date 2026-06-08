@@ -45,7 +45,8 @@ window.db.send('INIT', { dbName });
 const app = Elm.Main.init({
     node: document.getElementById('elm-app'),
     flags: {
-        query: initialQuery
+        query: initialQuery,
+        isHydrated: localStorage.getItem('pingolin_hydrated') === 'true'
     }
 });
 
@@ -117,6 +118,11 @@ worker.onmessage = (e) => {
         app.ports.fromWorker.send(e.data);
     }
     
+    // Persistence Hints
+    if (e.data.type === 'SYNC_COMPLETE' || e.data.type === 'SESSION_RESTORED') {
+        localStorage.setItem('pingolin_hydrated', 'true');
+    }
+
     // Auto-update popular tags in Elm when they arrive
     if (e.data.type === 'QUERY_RESULTS' && e.data.id === 'popular-tags') {
         if (app.ports && app.ports.tagSuggestions) {
