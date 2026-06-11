@@ -37,4 +37,16 @@ export class BookmarkItem {
   async delete() {
     await this.deleteButton.click();
   }
+
+  async expectTags(tags: string[]) {
+    for (const tag of tags) {
+      await expect(this.tagsContainer).toContainText(tag);
+    }
+  }
+
+  async expectNotTags(tags: string[]) {
+    for (const tag of tags) {
+      await expect(this.tagsContainer).not.toContainText(tag);
+    }
+  }
 }

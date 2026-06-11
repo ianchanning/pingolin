@@ -156,7 +156,9 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
       } catch (_) {}
       console.error(`[Worker] Detailed Proxy Error (${response.status}) at ${path}:`, bodyText);
       console.warn(`[Worker] Ritual HTTP Failure (${response.status}) at ${path}`);
-      return null;
+      const errMsg = `HTTP ${response.status}: ${bodyText.trim() || response.statusText}`;
+      self.postMessage({ type: 'ERROR', payload: errMsg });
+      throw new Error(errMsg);
     }
 
     const text = await response.text();
@@ -170,7 +172,8 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
     }
   } catch (err) {
     console.error(`[Worker] Ritual Network Failure at ${path}:`, err);
-    return null;
+    self.postMessage({ type: 'ERROR', payload: err.message });
+    throw err;
   }
 };
 
@@ -301,6 +304,7 @@ const checkForUpdates = async (proxyUrl, authToken) => {
     self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Archive is current.', progress: 1.0 } });
   } catch (err) {
     console.error('[Worker] Update Check Failure:', err);
+    throw err;
   }
 };
 

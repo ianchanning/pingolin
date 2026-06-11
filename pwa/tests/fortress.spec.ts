@@ -536,6 +536,10 @@ test.describe('The Universal Fortress', () => {
     const app = new AppPage(page);
     const dbName = `test-err-prop-${Math.random().toString(36).substring(7)}.db`;
 
+    // Clear local storage for this origin
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', []);
     await app.mockProxy('/posts/dates', { dates: {} });
@@ -552,11 +556,7 @@ test.describe('The Universal Fortress', () => {
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
 
-    // Trigger sync check
-    await page.evaluate(() => {
-      (window as any).sync.setThrottle(100);
-      (window as any).sync.startLoop();
-    });
+
 
     // We expect the status to reflect the error instead of getting stuck on "Syncing..."
     await expect(app.syncStatus).toContainText(/HTTP 500: Cloudflare Proxy Error/, { timeout: 15000 });
@@ -565,6 +565,10 @@ test.describe('The Universal Fortress', () => {
   test('Scenario 22: Remote Tag Edit Ingestion', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-remote-tag-${Math.random().toString(36).substring(7)}.db`;
+
+    // Clear local storage for this origin
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
 
     const initialBookmark = { href: 'https://edit-tags.com', description: 'Original', tags: 'old-tag', time: '2023-10-01T12:00:00Z' };
 
@@ -578,10 +582,9 @@ test.describe('The Universal Fortress', () => {
     await app.login('test:TOKEN');
     await app.expectBookmarkCount(1, { timeout: 10000 });
     await app.getBookmarkItem(0).expectTitle('Original');
-    
     // Check old tag is visible
-    const tags = await app.getBookmarkItem(0).getTags();
-    expect(tags).toContain('old-tag');
+    const item = app.getBookmarkItem(0);
+    await item.expectTags(['old-tag']);
 
     // 2. Mock a tag edit on the server (represented as update_time changing and posts/all returning modified tag)
     const updatedBookmark = { href: 'https://edit-tags.com', description: 'Original', tags: 'new-tag', time: '2023-10-01T12:00:00Z' };
@@ -589,16 +592,23 @@ test.describe('The Universal Fortress', () => {
     await app.mockProxy('/posts/all', [updatedBookmark]);
 
     // Trigger sync
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       (window as any).sync.setThrottle(100);
-      (window as any).sync.startLoop();
+      await (window as any).db.send('CHECK_FOR_UPDATES', {
+        proxyUrl: (window as any).sync.proxyUrl,
+        authToken: (window as any).sync.authToken
+      });
     });
 
     // 3. Verify that the tag updates in the UI
-    await page.waitForTimeout(1000);
-    const updatedTags = await app.getBookmarkItem(0).getTags();
-    expect(updatedTags).toContain('new-tag');
-    expect(updatedTags).not.toContain('old-tag');
+    const row = await page.evaluate(async () => {
+      const db = (window as any).db;
+      return db.query("SELECT * FROM bookmarks WHERE href = 'https://edit-tags.com'");
+    });
+    console.log("DB Row after Delta Sync:", JSON.stringify(row));
+
+    await item.expectTags(['new-tag']);
+    await item.expectNotTags(['old-tag']);
   });
 
   test('Scenario 23: Token Persistence Fallback (Transient Storage)', async ({ page }) => {

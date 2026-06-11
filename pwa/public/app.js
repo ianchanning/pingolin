@@ -40,7 +40,28 @@ class DatabaseBridge {
 window.db = new DatabaseBridge();
 
 // Initial Handshake: DO THIS FIRST
-window.db.send('INIT', { dbName });
+let sessionRestored = false;
+window.db.send('INIT', { dbName }).then(() => {
+    if (!sessionRestored) {
+        const token = localStorage.getItem('pingolin_auth_token');
+        const proxyUrl = localStorage.getItem('pingolin_proxy_url');
+        if (token && proxyUrl) {
+            console.log('[App] Restoring session from localStorage fallback:', token);
+            window.sync.proxyUrl = proxyUrl;
+            window.sync.authToken = token;
+            if (app.ports && app.ports.fromWorker) {
+                app.ports.fromWorker.send({
+                    type: 'SESSION_RESTORED',
+                    payload: {
+                        token: token,
+                        proxyUrl: proxyUrl,
+                        lastSync: ''
+                    }
+                });
+            }
+        }
+    }
+});
 
 const app = Elm.Main.init({
     node: document.getElementById('elm-app'),
@@ -87,6 +108,12 @@ if (app.ports && app.ports.toWorker) {
         if (msg.type === 'START_HYDRATION' || msg.type === 'START_SYNC_LOOP') {
             window.sync.proxyUrl = msg.payload.proxyUrl;
             window.sync.authToken = msg.payload.authToken;
+            if (msg.payload.authToken) {
+                localStorage.setItem('pingolin_auth_token', msg.payload.authToken);
+            }
+            if (msg.payload.proxyUrl) {
+                localStorage.setItem('pingolin_proxy_url', msg.payload.proxyUrl);
+            }
         }
         worker.postMessage(msg);
     });
@@ -130,7 +157,19 @@ worker.onmessage = (e) => {
     }
     
     // Persistence Hints
-    if (e.data.type === 'SYNC_COMPLETE' || e.data.type === 'SESSION_RESTORED') {
+    if (e.data.type === 'SESSION_RESTORED') {
+        sessionRestored = true;
+        if (e.data.payload) {
+            if (e.data.payload.token) {
+                localStorage.setItem('pingolin_auth_token', e.data.payload.token);
+            }
+            if (e.data.payload.proxyUrl) {
+                localStorage.setItem('pingolin_proxy_url', e.data.payload.proxyUrl);
+            }
+        }
+        localStorage.setItem('pingolin_hydrated', 'true');
+    }
+    if (e.data.type === 'SYNC_COMPLETE') {
         localStorage.setItem('pingolin_hydrated', 'true');
     }
 
