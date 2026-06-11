@@ -350,12 +350,19 @@ handleWorkerMsg msg model =
                     else
                         proxyUrl
 
-                cmd =
-                    if effectiveToken /= "" && effectiveProxy /= "" then
-                        Cmd.batch [ queryAll, startSyncLoop effectiveProxy effectiveToken ]
+                queryCmd =
+                    if model.query == "" then
+                        queryAll
 
                     else
-                        queryAll
+                        querySearch model.query
+
+                cmd =
+                    if effectiveToken /= "" && effectiveProxy /= "" then
+                        Cmd.batch [ queryCmd, startSyncLoop effectiveProxy effectiveToken ]
+
+                    else
+                        queryCmd
             in
             ( { model | isHydrated = True, status = "Session Restored.", token = effectiveToken, proxyUrl = effectiveProxy }
             , cmd

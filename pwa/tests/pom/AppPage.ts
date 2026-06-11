@@ -1,4 +1,5 @@
-import { Page, Locator } from '@playwright/test';
+import { Page, Locator, expect } from '@playwright/test';
+import { BookmarkItem } from './BookmarkItem';
 
 export class AppPage {
   readonly page: Page;
@@ -45,5 +46,29 @@ export class AppPage {
         body: JSON.stringify(data),
       });
     });
+  }
+
+  async expectOnline() {
+    await expect(this.networkStatus).toHaveText('ONLINE');
+  }
+
+  async expectOffline() {
+    await expect(this.networkStatus).toHaveText('OFFLINE');
+  }
+
+  async expectBookmarkCount(count: number, options?: { timeout?: number }) {
+    await expect(this.page.getByTestId('bookmark-item')).toHaveCount(count, options);
+  }
+
+  getBookmarkItem(index: number): BookmarkItem {
+    return new BookmarkItem(this.page.getByTestId('bookmark-item').nth(index));
+  }
+
+  async expectSearchQuery(query: string) {
+    await expect(this.searchInput).toHaveValue(query);
+  }
+
+  async toggleAddForm() {
+    await this.toggleAddButton.click();
   }
 }

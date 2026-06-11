@@ -1,4 +1,4 @@
-import { Locator } from '@playwright/test';
+import { Locator, expect } from '@playwright/test';
 
 export class BookmarkItem {
   readonly locator: Locator;
@@ -20,5 +20,21 @@ export class BookmarkItem {
     if (!text) return [];
     // Format is "Tags: tag1, tag2"
     return text.replace('Tags: ', '').split(', ').filter(Boolean);
+  }
+
+  async expectTitle(title: string) {
+    await expect(this.titleLink).toHaveText(title);
+  }
+
+  async expectPending(pending: boolean = true, options?: { timeout?: number }) {
+    if (pending) {
+      await expect(this.pendingIcon).toBeVisible(options);
+    } else {
+      await expect(this.pendingIcon).not.toBeVisible(options);
+    }
+  }
+
+  async delete() {
+    await this.deleteButton.click();
   }
 }

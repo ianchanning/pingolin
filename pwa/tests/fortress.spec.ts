@@ -97,26 +97,27 @@ test.describe('The Universal Fortress', () => {
 
     // 1. Go Offline
     await context.setOffline(true);
-    await expect(app.networkStatus).toBeVisible();
+    await app.expectOffline();
 
     // 2. Add a bookmark while offline
-    await app.toggleAddButton.click();
+    await app.toggleAddForm();
     await addForm.fill('https://offline.com', 'Offline Bookmark', 'offline test');
     await addForm.submit();
 
     // 3. Assert immediate local UI update
-    const list = page.getByTestId('bookmark-item');
-    await expect(list).toHaveCount(1);
-    await expect(list).toContainText('Offline Bookmark');
-    await expect(page.getByTestId('pending-icon')).toBeVisible();
+    await app.expectBookmarkCount(1);
+    const item = app.getBookmarkItem(0);
+    await item.expectTitle('Offline Bookmark');
+    await item.expectPending(true);
 
     // 4. Assert persistence after refresh
     await context.setOffline(false);
     await page.reload();
-    await expect(list).toHaveCount(1);
-    await expect(list).toContainText('Offline Bookmark');
-    await expect(page.getByTestId('pending-icon')).toBeVisible();
-    await expect(app.networkStatus).not.toBeVisible();
+    await app.expectBookmarkCount(1);
+    const reloadedItem = app.getBookmarkItem(0);
+    await reloadedItem.expectTitle('Offline Bookmark');
+    await reloadedItem.expectPending(true);
+    await app.expectOnline();
   });
 
   test('Scenario 7: The Upstream Flush (Reconnection)', async ({ page, context }) => {
@@ -135,10 +136,12 @@ test.describe('The Universal Fortress', () => {
 
     // 1. Add Bookmark Offline
     await context.setOffline(true);
-    await app.toggleAddButton.click();
+    await app.toggleAddForm();
     await addForm.fill('https://reconnect.com', 'Reconnect Bookmark', 'test');
     await addForm.submit();
-    await expect(page.getByTestId('pending-icon')).toBeVisible();
+
+    const item = app.getBookmarkItem(0);
+    await item.expectPending(true);
 
     // 2. Go Online and trigger sync
     await context.setOffline(false);
@@ -148,8 +151,7 @@ test.describe('The Universal Fortress', () => {
     await app.search('Reconnect');
 
     // Assert that the pending icon disappears
-    // Note: main.ts has a 5s wait between pushes
-    await expect(page.getByTestId('pending-icon')).not.toBeVisible({ timeout: 15000 });
+    await item.expectPending(false, { timeout: 15000 });
   });
 
   test('Scenario 11: Search Persistence during Sync', async ({ page }) => {
@@ -210,11 +212,11 @@ test.describe('The Universal Fortress', () => {
     // 1. Initial Load and Login
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(2, { timeout: 10000 });
+    await app.expectBookmarkCount(2, { timeout: 10000 });
 
     // 2. Perform Search to set URL
     await app.search('year');
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(1);
+    await app.expectBookmarkCount(1);
     await expect(page.url()).toContain('q=year');
 
     // 3. REFRESH the page with the query in URL
@@ -222,10 +224,9 @@ test.describe('The Universal Fortress', () => {
     await page.goto(`/?dbName=${dbName}&q=year`);
 
     // 4. Assert that the search is still active and results are visible
-    await expect(app.searchInput).toHaveValue('year');
-    const list = page.getByTestId('bookmark-item');
-    await expect(list).toHaveCount(1, { timeout: 10000 });
-    await expect(list).toContainText('Yearly Review');
+    await app.expectSearchQuery('year');
+    await app.expectBookmarkCount(1, { timeout: 10000 });
+    await app.getBookmarkItem(0).expectTitle('Yearly Review');
   });
 
   test('Scenario 13: The Heartbeat Ritual (Autosync Verification)', async ({ page }) => {
@@ -280,23 +281,9 @@ test.describe('The Universal Fortress', () => {
     await app.login('test:TOKEN');
 
     // Wait for initial sync to "complete" (ingest data)
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 10000 });
+    await app.expectBookmarkCount(1, { timeout: 10000 });
 
     // 2. SIMULATE ZOMBIE STATE: Manually clear the sync sentinel in metadata
-    // We'll use a reload to simulate a crash that happened just before the sentinel was written
-    // But in our current code, hydration writes it. 
-    // Let's use a more direct approach: Clear it via evaluate after it was written
-    await page.evaluate(async () => {
-      const db = (window as any).db;
-      // We keep the auth_token but kill the sync sentinel
-      // In worker.ts, db.exec is internal, so we might need a debug method or just reload with a poisoned state
-      // Let's assume we reload and the sentinel is missing
-    });
-
-    // Actually, let's just mock the INIT response to return bookmarks but no sentinel
-    // But our current system is local-first. 
-
-    // Better: We'll forge a database with a script or evaluate that puts it in this state.
     await page.evaluate(async () => {
       const db = (window as any).db;
       // This mimics an interrupted sync where data was written but sentinel wasn't
@@ -314,9 +301,8 @@ test.describe('The Universal Fortress', () => {
 
     // If the bug exists, the count will stay 1.
     // If we fix it, the count should become 2.
-    const list = page.getByTestId('bookmark-item');
-    await expect(list).toHaveCount(2, { timeout: 20000 });
-    await expect(list.first()).toContainText('Revived!');
+    await app.expectBookmarkCount(2, { timeout: 20000 });
+    await app.getBookmarkItem(0).expectTitle('Revived!');
   });
 
   test('Scenario 15: The Deletion Exorcism (The Dates Hack)', async ({ page }) => {
@@ -424,9 +410,9 @@ test.describe('The Universal Fortress', () => {
     // Type the full word to trigger alias
     await tagsInput.type('st');
     await expect(datalist.locator('option[value$=\"system\"]')).toBeAttached();
-    });
+  });
 
-    test('Scenario 18: The Virtual Scroll Ritual', async ({ page }) => {
+  test('Scenario 18: The Virtual Scroll Ritual', async ({ page }) => {
     const app = new AppPage(page);
     await app.goto('/?dbName=test-scroll.db');
 
@@ -451,7 +437,7 @@ test.describe('The Universal Fortress', () => {
     await page.reload();
     // Use an auto-retrying expect to wait for the async ritual
     await expect(app.syncStatus).toHaveText(/Session Restored|Archive Online/, { timeout: 10000 });
-    
+
     const telemetry = await app.syncStatus.innerText();
     console.log(`Telemetry: ${telemetry}`);
 
@@ -476,12 +462,12 @@ test.describe('The Universal Fortress', () => {
     const scrolledDomCount = await list.count();
     console.log(`Scrolled DOM count: ${scrolledDomCount}`);
     expect(scrolledDomCount).toBeLessThan(30);
-    
+
     // Bookmark 0 should be gone from the entire list
     const content = await list.allTextContents();
     const hasBookmark0 = content.some(t => t.includes('Bookmark 0'));
     const hasBookmark50 = content.some(t => t.includes('Bookmark 50'));
-    
+
     expect(hasBookmark0).toBe(false);
     expect(hasBookmark50).toBe(true);
   });
@@ -512,6 +498,135 @@ test.describe('The Universal Fortress', () => {
     await expect(list).toHaveCount(2);
     const allText = await list.allTextContents();
     expect(allText.some(t => t.includes('Banana'))).toBe(true);
+  });
+
+  test('Scenario 20: Safe Recovery from Empty/Invalid Proxy URL', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-invalid-proxy-${Math.random().toString(36).substring(7)}.db`;
+
+    // 1. Set up an invalid proxy URL in the DB metadata
+    await page.goto(`/?dbName=${dbName}`);
+    await page.evaluate(async () => {
+      const db = (window as any).db;
+      await db.send('EXEC', {
+        sql: "INSERT INTO metadata (key, value) VALUES ('auth_token', 'test:token'), ('proxy_url', 'undefined') ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+      });
+    });
+
+    // 2. Reload the page - the worker should restore the session and attempt to check for updates,
+    // but because base URL is invalid, it should log a "Ritual Void Failure" instead of throwing an unhandled TypeError.
+    const consoleMsgs: string[] = [];
+    page.on('console', msg => {
+      consoleMsgs.push(msg.text());
+    });
+
+    await page.reload();
+
+    // The app should boot and not crash the UI (it should restore session and stay online)
+    await app.expectOnline();
+
+    // Wait for the worker to process updates check and print the void warning
+    await page.waitForTimeout(1000);
+
+    const hasVoidWarning = consoleMsgs.some(m => m.includes('Ritual Void Failure') || m.includes('not a valid absolute URL'));
+    expect(hasVoidWarning).toBe(true);
+  });
+
+  test('Scenario 21: Error Status Propagation (HTTP 500/522)', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-err-prop-${Math.random().toString(36).substring(7)}.db`;
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', []);
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    // Mock /posts/update to return 500 Internal Server Error with custom body
+    await page.context().route(url => url.href.includes('/posts/update'), async (r) => {
+      await r.fulfill({
+        status: 500,
+        contentType: 'text/plain',
+        body: 'Cloudflare Proxy Error: 522 Origin Connection Timeout',
+      });
+    });
+
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+
+    // Trigger sync check
+    await page.evaluate(() => {
+      (window as any).sync.setThrottle(100);
+      (window as any).sync.startLoop();
+    });
+
+    // We expect the status to reflect the error instead of getting stuck on "Syncing..."
+    await expect(app.syncStatus).toContainText(/HTTP 500: Cloudflare Proxy Error/, { timeout: 15000 });
+  });
+
+  test('Scenario 22: Remote Tag Edit Ingestion', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-remote-tag-${Math.random().toString(36).substring(7)}.db`;
+
+    const initialBookmark = { href: 'https://edit-tags.com', description: 'Original', tags: 'old-tag', time: '2023-10-01T12:00:00Z' };
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', [initialBookmark]);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: { '2023-10-01': '1' } });
+
+    // 1. Load page and login
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await app.expectBookmarkCount(1, { timeout: 10000 });
+    await app.getBookmarkItem(0).expectTitle('Original');
+    
+    // Check old tag is visible
+    const tags = await app.getBookmarkItem(0).getTags();
+    expect(tags).toContain('old-tag');
+
+    // 2. Mock a tag edit on the server (represented as update_time changing and posts/all returning modified tag)
+    const updatedBookmark = { href: 'https://edit-tags.com', description: 'Original', tags: 'new-tag', time: '2023-10-01T12:00:00Z' };
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T14:00:00Z' });
+    await app.mockProxy('/posts/all', [updatedBookmark]);
+
+    // Trigger sync
+    await page.evaluate(() => {
+      (window as any).sync.setThrottle(100);
+      (window as any).sync.startLoop();
+    });
+
+    // 3. Verify that the tag updates in the UI
+    await page.waitForTimeout(1000);
+    const updatedTags = await app.getBookmarkItem(0).getTags();
+    expect(updatedTags).toContain('new-tag');
+    expect(updatedTags).not.toContain('old-tag');
+  });
+
+  test('Scenario 23: Token Persistence Fallback (Transient Storage)', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-transient-${Math.random().toString(36).substring(7)}.db`;
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', []);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    // 1. Initial Login
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await app.expectOnline();
+
+    // 2. Simulate complete wiping of the DB (transient storage reset on reload)
+    await page.evaluate(async () => {
+      const db = (window as any).db;
+      await db.send('DEBUG_CLEAR_DB');
+    });
+
+    // 3. Reload the page
+    await page.reload();
+
+    // 4. Assert that the session is restored from localStorage fallback
+    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 15000 });
+    await app.expectOnline();
   });
 });
 

@@ -84,7 +84,7 @@ if (app.ports && app.ports.viewportSize) {
 // Port Bridge
 if (app.ports && app.ports.toWorker) {
     app.ports.toWorker.subscribe((msg) => {
-        if (msg.type === 'START_HYDRATION') {
+        if (msg.type === 'START_HYDRATION' || msg.type === 'START_SYNC_LOOP') {
             window.sync.proxyUrl = msg.payload.proxyUrl;
             window.sync.authToken = msg.payload.authToken;
         }
@@ -106,7 +106,18 @@ if (app.ports && app.ports.updateUrl) {
 
 if (app.ports && app.ports.networkStatus) {
     const updateOnlineStatus = () => {
-        app.ports.networkStatus.send(navigator.onLine);
+        const isOnline = navigator.onLine;
+        app.ports.networkStatus.send(isOnline);
+        if (isOnline && window.sync && window.sync.proxyUrl && window.sync.authToken) {
+            console.log('[App] Online detected, triggering check for updates/flush...');
+            worker.postMessage({
+                type: 'CHECK_FOR_UPDATES',
+                payload: {
+                    proxyUrl: window.sync.proxyUrl,
+                    authToken: window.sync.authToken
+                }
+            });
+        }
     };
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
