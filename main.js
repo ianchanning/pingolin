@@ -4884,7 +4884,7 @@ var $elm$url$Url$Http = 0;
 var $elm$url$Url$Https = 1;
 var $elm$url$Url$Url = F6(
 	function (protocol, host, port_, path, query, fragment) {
-		return {ad: fragment, af: host, ak: path, am: port_, ap: protocol, r: query};
+		return {ad: fragment, af: host, ak: path, am: port_, ap: protocol, l: query};
 	});
 var $elm$core$String$contains = _String_contains;
 var $elm$core$String$length = _String_length;
@@ -5217,21 +5217,21 @@ var $elm$core$Maybe$withDefault = F2(
 		}
 	});
 var $author$project$Main$init = function (flags) {
-	var initialQuery = A2($elm$core$Maybe$withDefault, '', flags.r);
+	var initialQuery = A2($elm$core$Maybe$withDefault, '', flags.l);
 	return _Utils_Tuple2(
 		{
 			L: _List_Nil,
-			l: flags.l,
+			m: flags.m,
 			R: true,
 			f: {y: '', A: '', D: ''},
 			w: 0.0,
-			q: 'https://pinboard-proxy.ian-pinboard-proxy.workers.dev/',
-			r: initialQuery,
+			r: 'https://pinboard-proxy.ian-pinboard-proxy.workers.dev/',
+			l: initialQuery,
 			G: 0,
 			H: false,
 			j: 'Awakening Ritual...',
 			N: _List_Nil,
-			o: '',
+			p: '',
 			S: 800
 		},
 		(initialQuery !== '') ? $author$project$Main$querySearch(initialQuery) : $author$project$Main$queryAll);
@@ -5328,23 +5328,23 @@ var $author$project$Main$handleWorkerMsg = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{l: true, w: 1.0, j: 'Archive Restored. Finalizing...'}),
+						{m: true, w: 1.0, j: 'Archive Restored. Finalizing...'}),
 					$elm$core$Platform$Cmd$batch(
 						_List_fromArray(
 							[
 								$author$project$Main$queryAll,
-								A2($author$project$Main$startSyncLoop, model.q, model.o)
+								A2($author$project$Main$startSyncLoop, model.r, model.p)
 							])));
 			case 2:
 				var bookmarks = msg.a;
-				var hydrated = model.l || (!$elm$core$List$isEmpty(bookmarks));
+				var hydrated = model.m || (!$elm$core$List$isEmpty(bookmarks));
 				var newStatus = (hydrated && (!A2($elm$core$String$contains, 'Chaos', model.j))) ? ('Archive Online: ' + $elm$core$String$fromInt(
 					$elm$core$List$length(bookmarks))) : $elm$core$String$fromInt(
 					$elm$core$List$length(bookmarks));
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{L: bookmarks, l: hydrated, j: newStatus}),
+						{L: bookmarks, m: hydrated, j: newStatus}),
 					$elm$core$Platform$Cmd$none);
 			case 3:
 				var suggestions = msg.a;
@@ -5361,24 +5361,25 @@ var $author$project$Main$handleWorkerMsg = F2(
 						{j: 'Worker Chaos: ' + err}),
 					$elm$core$Platform$Cmd$none);
 			case 5:
-				return (model.r === '') ? _Utils_Tuple2(model, $author$project$Main$queryAll) : _Utils_Tuple2(
+				return (model.l === '') ? _Utils_Tuple2(model, $author$project$Main$queryAll) : _Utils_Tuple2(
 					model,
-					$author$project$Main$querySearch(model.r));
+					$author$project$Main$querySearch(model.l));
 			case 6:
 				var token = msg.a;
 				var proxyUrl = msg.b;
-				var effectiveToken = (token === '') ? model.o : token;
-				var effectiveProxy = (proxyUrl === '') ? model.q : proxyUrl;
+				var queryCmd = (model.l === '') ? $author$project$Main$queryAll : $author$project$Main$querySearch(model.l);
+				var effectiveToken = (token === '') ? model.p : token;
+				var effectiveProxy = (proxyUrl === '') ? model.r : proxyUrl;
 				var cmd = ((effectiveToken !== '') && (effectiveProxy !== '')) ? $elm$core$Platform$Cmd$batch(
 					_List_fromArray(
 						[
-							$author$project$Main$queryAll,
+							queryCmd,
 							A2($author$project$Main$startSyncLoop, effectiveProxy, effectiveToken)
-						])) : $author$project$Main$queryAll;
+						])) : queryCmd;
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{l: true, q: effectiveProxy, j: 'Session Restored.', o: effectiveToken}),
+						{m: true, r: effectiveProxy, j: 'Session Restored.', p: effectiveToken}),
 					cmd);
 			default:
 				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
@@ -5584,21 +5585,21 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{o: token}),
+						{p: token}),
 					$elm$core$Platform$Cmd$none);
 			case 1:
 				var proxy = msg.a;
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{q: proxy}),
+						{r: proxy}),
 					$elm$core$Platform$Cmd$none);
 			case 2:
 				var query = msg.a;
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{r: query, G: 0}),
+						{l: query, G: 0}),
 					$elm$core$Platform$Cmd$batch(
 						_List_fromArray(
 							[
@@ -5619,10 +5620,10 @@ var $author$project$Main$update = F2(
 									[
 										_Utils_Tuple2(
 										'proxyUrl',
-										$elm$json$Json$Encode$string(model.q)),
+										$elm$json$Json$Encode$string(model.r)),
 										_Utils_Tuple2(
 										'authToken',
-										$elm$json$Json$Encode$string(model.o))
+										$elm$json$Json$Encode$string(model.p))
 									]))),
 							_Utils_Tuple2(
 							'id',
@@ -5778,10 +5779,10 @@ var $author$project$Main$update = F2(
 											[
 												_Utils_Tuple2(
 												'proxyUrl',
-												$elm$json$Json$Encode$string(model.q)),
+												$elm$json$Json$Encode$string(model.r)),
 												_Utils_Tuple2(
 												'authToken',
-												$elm$json$Json$Encode$string(model.o))
+												$elm$json$Json$Encode$string(model.p))
 											]))),
 									_Utils_Tuple2(
 									'id',
@@ -6255,7 +6256,7 @@ var $author$project$Main$view = function (model) {
 					]),
 				_List_fromArray(
 					[
-						((!model.l) || (model.o === '')) ? A2(
+						((!model.m) || (model.p === '')) ? A2(
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
@@ -6269,7 +6270,7 @@ var $author$project$Main$view = function (model) {
 								_List_fromArray(
 									[
 										$elm$html$Html$Attributes$placeholder('Auth Token (user:HEX)'),
-										$elm$html$Html$Attributes$value(model.o),
+										$elm$html$Html$Attributes$value(model.p),
 										$elm$html$Html$Events$onInput($author$project$Main$SetToken),
 										A2($elm$html$Html$Attributes$attribute, 'data-testid', 'auth-token')
 									]),
@@ -6279,7 +6280,7 @@ var $author$project$Main$view = function (model) {
 								_List_fromArray(
 									[
 										$elm$html$Html$Attributes$placeholder('Proxy URL'),
-										$elm$html$Html$Attributes$value(model.q),
+										$elm$html$Html$Attributes$value(model.r),
 										$elm$html$Html$Events$onInput($author$project$Main$SetProxy)
 									]),
 								_List_Nil),
@@ -6349,7 +6350,7 @@ var $author$project$Main$view = function (model) {
 								_List_fromArray(
 									[
 										$elm$html$Html$Attributes$placeholder('Search (exact: #tag, fuzzy: term)'),
-										$elm$html$Html$Attributes$value(model.r),
+										$elm$html$Html$Attributes$value(model.l),
 										$elm$html$Html$Events$onInput($author$project$Main$SetQuery),
 										A2($elm$html$Html$Attributes$attribute, 'data-testid', 'search-input')
 									]),
@@ -6462,7 +6463,7 @@ _Platform_export({'Main':{'init':$author$project$Main$main(
 				$elm$json$Json$Decode$andThen,
 				function (isHydrated) {
 					return $elm$json$Json$Decode$succeed(
-						{l: isHydrated, r: query});
+						{m: isHydrated, l: query});
 				},
 				A2($elm$json$Json$Decode$field, 'isHydrated', $elm$json$Json$Decode$bool));
 		},

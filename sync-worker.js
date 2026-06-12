@@ -89,12 +89,27 @@ const initDb = async (dbName = '/pinboard.db') => {
       session[row.key] = row.value;
     }
 
-    if (session.last_full_sync_time) {
-      console.log('[Worker] Session Detected:', session.last_full_sync_time);
+    if (session.auth_token) {
+      console.log('[Worker] Session Detected via Auth Token:', session.auth_token);
+      // Self-heal: if last_full_sync_time is missing but we have bookmarks, write it!
+      if (!session.last_full_sync_time) {
+        const bookmarksCountResult = db.exec({ sql: "SELECT count(*) as count FROM bookmarks", returnValue: "resultRows", rowMode: "object" });
+        const count = bookmarksCountResult.length > 0 ? bookmarksCountResult[0].count : 0;
+        if (count > 0) {
+          console.warn(`[Worker] Zombie Database Detected: ${count} bookmarks but no last_full_sync_time. Healing...`);
+          const latest = db.exec({ sql: 'SELECT time FROM bookmarks ORDER BY time DESC LIMIT 1', returnValue: 'resultRows', rowMode: 'object' });
+          const healTime = latest.length > 0 ? latest[0].time : new Date().toISOString();
+          db.exec({
+            sql: "INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?), ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            bind: [healTime, healTime]
+          });
+          session.last_full_sync_time = healTime;
+        }
+      }
       self.postMessage({ 
         type: 'SESSION_RESTORED', 
         payload: { 
-          lastSync: session.last_full_sync_time,
+          lastSync: session.last_full_sync_time || '',
           token: session.auth_token || '',
           proxyUrl: session.proxy_url || ''
         } 
@@ -119,6 +134,13 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
   }
 
   try {
+    new URL(baseUrl);
+  } catch (err) {
+    console.error(`[Worker] Ritual Void Failure: Base URL is not a valid absolute URL: "${baseUrl}" for path ${path}`);
+    return null;
+  }
+
+  try {
     const sanitizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     // Use the 2-arg constructor to safely join relative path to absolute base
     // Note: path must not have leading slash for proper joining if base has trailing, 
@@ -128,8 +150,15 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
 
     const response = await fetch(url.toString());
     if (!response.ok) {
+      let bodyText = '';
+      try {
+        bodyText = await response.text();
+      } catch (_) {}
+      console.error(`[Worker] Detailed Proxy Error (${response.status}) at ${path}:`, bodyText);
       console.warn(`[Worker] Ritual HTTP Failure (${response.status}) at ${path}`);
-      return null;
+      const errMsg = `HTTP ${response.status}: ${bodyText.trim() || response.statusText}`;
+      self.postMessage({ type: 'ERROR', payload: errMsg });
+      throw new Error(errMsg);
     }
 
     const text = await response.text();
@@ -138,12 +167,16 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
     try {
       return JSON.parse(text);
     } catch (err) {
+      if (text.includes('code="done"') || text.includes('result_code":"done"') || text.includes('result_code="done"')) {
+        return { result_code: 'done' };
+      }
       console.error(`[Worker] Ritual Alchemy Failure (Non-JSON) at ${path}. Content:`, text.substring(0, 100));
       return null;
     }
   } catch (err) {
     console.error(`[Worker] Ritual Network Failure at ${path}:`, err);
-    return null;
+    self.postMessage({ type: 'ERROR', payload: err.message });
+    throw err;
   }
 };
 
@@ -167,7 +200,9 @@ const startSyncLoop = (proxyUrl, authToken) => {
 
 const renameTagWorkaround = async (oldTag, newTag, proxyUrl, authToken, id) => {
   try {
-    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: `Renaming tag: ${oldTag} -> ${newTag}...` }, id });
+    const statusMsg = `Renaming tag: ${oldTag} -> ${newTag}...`;
+    console.log(`[Worker] ${statusMsg}`);
+    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: statusMsg }, id });
 
     const bookmarks = db.exec({
       sql: "SELECT * FROM bookmarks WHERE (' ' || tags || ' ') LIKE ?",
@@ -193,11 +228,12 @@ const renameTagWorkaround = async (oldTag, newTag, proxyUrl, authToken, id) => {
       await new Promise(resolve => setTimeout(resolve, apiThrottle));
     }
 
-    const deleteUrl = new URL(`${proxyUrl}/tags/delete`);
-    deleteUrl.search = new URLSearchParams({ auth_token: authToken, format: 'json', tag: oldTag }).toString();
-
-    const delRes = await fetch(deleteUrl.toString());
-    if (!delRes.ok) throw new Error(`Tag delete failed: ${delRes.status}`);
+    const data = await fetchRitual(proxyUrl, '/tags/delete', {
+      auth_token: authToken,
+      format: 'json',
+      tag: oldTag
+    });
+    if (!data) throw new Error('Tag delete failed: No response');
 
     self.postMessage({ type: 'EXEC_SUCCESS', id });
     self.postMessage({ type: 'REFRESH_REQUIRED' });
@@ -220,8 +256,21 @@ const flushPendingChanges = async (proxyUrl, authToken) => {
 
   console.log(`[Worker] Flushing ${pending.length} changes...`);
 
+  let count = 0;
   for (const b of pending) {
     try {
+      const statusMsg = b.sync_status === 'PENDING_DELETE'
+        ? `Syncing: deleting bookmark: ${b.href}`
+        : `Syncing: uploading bookmark: ${b.href} (${b.description})`;
+      console.log(`[Worker] ${statusMsg}`);
+      self.postMessage({ 
+        type: 'SYNC_PROGRESS', 
+        payload: { 
+          status: statusMsg, 
+          progress: count / pending.length 
+        } 
+      });
+
       if (b.sync_status === 'PENDING_DELETE') {
         await deleteBookmark(proxyUrl, authToken, b.href);
       } else {
@@ -233,6 +282,7 @@ const flushPendingChanges = async (proxyUrl, authToken) => {
         bind: [b.href]
       });
 
+      count++;
       await new Promise(resolve => setTimeout(resolve, apiThrottle));
     } catch (err) {
       console.error(`[Worker] Flush Failure ${b.href}:`, err);
@@ -273,6 +323,7 @@ const checkForUpdates = async (proxyUrl, authToken) => {
     self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Archive is current.', progress: 1.0 } });
   } catch (err) {
     console.error('[Worker] Update Check Failure:', err);
+    throw err;
   }
 };
 
@@ -487,6 +538,7 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
       case 'CHECK_FOR_UPDATES':
+        await flushPendingChanges(payload.proxyUrl, payload.authToken);
         await checkForUpdates(payload.proxyUrl, payload.authToken);
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
