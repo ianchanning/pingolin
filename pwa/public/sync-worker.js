@@ -124,6 +124,7 @@ const initDb = async (dbName = '/pinboard.db') => {
 };
 
 let syncLoopActive = false;
+let syncLoopTimeout = null;
 let syncInterval = 60000;
 let apiThrottle = 3000;
 
@@ -181,7 +182,13 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
 };
 
 const startSyncLoop = (proxyUrl, authToken) => {
-  if (syncLoopActive) return;
+  if (syncLoopActive) {
+    console.log(`[Worker] Heartbeat Already Active. Rescheduling with new interval: ${syncInterval}ms`);
+    if (syncLoopTimeout) {
+      clearTimeout(syncLoopTimeout);
+      syncLoopTimeout = null;
+    }
+  }
   syncLoopActive = true;
   console.log(`[Worker] Heartbeat Started (${syncInterval}ms)`);
 
@@ -192,7 +199,7 @@ const startSyncLoop = (proxyUrl, authToken) => {
     } catch (err) {
       console.error('[Worker] Heartbeat Error:', err);
     }
-    setTimeout(tick, syncInterval);
+    syncLoopTimeout = setTimeout(tick, syncInterval);
   };
 
   tick();

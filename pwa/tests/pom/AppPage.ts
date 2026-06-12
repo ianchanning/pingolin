@@ -24,9 +24,13 @@ export class AppPage {
     this.toggleAddButton = page.locator('#toggle-add-btn');
   }
 
-  async goto() {
-    const dbName = `test-${Math.random().toString(36).substring(7)}.db`;
-    await this.page.goto(`/?dbName=${dbName}`);
+  async goto(url?: string) {
+    if (url) {
+      await this.page.goto(url);
+    } else {
+      const dbName = `test-${Math.random().toString(36).substring(7)}.db`;
+      await this.page.goto(`/?dbName=${dbName}`);
+    }
   }
 
   async login(token: string) {

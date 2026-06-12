@@ -209,6 +209,7 @@ class SyncOrchestrator {
 
     async setDebugCap(cap) {
         console.log('Setting debug cap:', cap);
+        return this.db.send('SET_DEBUG_CAP', cap);
     }
 
     async renameTag(oldTag, newTag) {

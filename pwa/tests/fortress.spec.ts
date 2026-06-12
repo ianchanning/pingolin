@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Worker } from '@playwright/test';
 import { AppPage } from './pom/AppPage';
 import { AddForm } from './pom/AddForm';
 
@@ -8,7 +8,7 @@ test.describe('The Universal Fortress', () => {
     page.on('pageerror', err => console.log(`[BROWSER ERROR] ${err.message}`));
     
     // Capture worker console logs and errors explicitly
-    page.on('worker', worker => {
+    page.on('worker', (worker: Worker) => {
       worker.on('console', msg => console.log(`[WORKER] ${msg.type()}: ${msg.text()}`));
       worker.on('close', () => console.log(`[WORKER] Closed: ${worker.url()}`));
     });
@@ -329,6 +329,8 @@ test.describe('The Universal Fortress', () => {
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [b1, b2]);
     await app.mockProxy('/posts/update', { update_time: `${date}T14:00:00Z` });
+    await app.mockProxy('/posts/dates', { dates: { [date]: '2' } });
+    await app.mockProxy('/posts/get', [b1, b2]);
 
     // Initial Load: Ingest both bookmarks
     await page.goto(`/?dbName=${dbName}`);
@@ -699,8 +701,9 @@ test.describe('The Universal Fortress', () => {
     await app.search('even');
     
     // ScrollTop should reset to 0
-    scrollTop = await scrollContainer.evaluate(el => el.scrollTop);
-    expect(scrollTop).toBe(0);
+    await expect.poll(async () => {
+      return await scrollContainer.evaluate(el => el.scrollTop);
+    }).toBe(0);
 
     // 5. Scroll down again on search results
     await scrollContainer.evaluate(el => el.scrollTop = 50);
@@ -711,8 +714,9 @@ test.describe('The Universal Fortress', () => {
     await app.search('');
     
     // ScrollTop should reset to 0 again
-    scrollTop = await scrollContainer.evaluate(el => el.scrollTop);
-    expect(scrollTop).toBe(0);
+    await expect.poll(async () => {
+      return await scrollContainer.evaluate(el => el.scrollTop);
+    }).toBe(0);
   });
 });
 
