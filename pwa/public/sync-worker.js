@@ -167,6 +167,9 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
     try {
       return JSON.parse(text);
     } catch (err) {
+      if (text.includes('code="done"') || text.includes('result_code":"done"') || text.includes('result_code="done"')) {
+        return { result_code: 'done' };
+      }
       console.error(`[Worker] Ritual Alchemy Failure (Non-JSON) at ${path}. Content:`, text.substring(0, 100));
       return null;
     }
@@ -197,7 +200,9 @@ const startSyncLoop = (proxyUrl, authToken) => {
 
 const renameTagWorkaround = async (oldTag, newTag, proxyUrl, authToken, id) => {
   try {
-    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: `Renaming tag: ${oldTag} -> ${newTag}...` }, id });
+    const statusMsg = `Renaming tag: ${oldTag} -> ${newTag}...`;
+    console.log(`[Worker] ${statusMsg}`);
+    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: statusMsg }, id });
 
     const bookmarks = db.exec({
       sql: "SELECT * FROM bookmarks WHERE (' ' || tags || ' ') LIKE ?",
@@ -251,8 +256,21 @@ const flushPendingChanges = async (proxyUrl, authToken) => {
 
   console.log(`[Worker] Flushing ${pending.length} changes...`);
 
+  let count = 0;
   for (const b of pending) {
     try {
+      const statusMsg = b.sync_status === 'PENDING_DELETE'
+        ? `Syncing: deleting bookmark: ${b.href}`
+        : `Syncing: uploading bookmark: ${b.href} (${b.description})`;
+      console.log(`[Worker] ${statusMsg}`);
+      self.postMessage({ 
+        type: 'SYNC_PROGRESS', 
+        payload: { 
+          status: statusMsg, 
+          progress: count / pending.length 
+        } 
+      });
+
       if (b.sync_status === 'PENDING_DELETE') {
         await deleteBookmark(proxyUrl, authToken, b.href);
       } else {
@@ -264,6 +282,7 @@ const flushPendingChanges = async (proxyUrl, authToken) => {
         bind: [b.href]
       });
 
+      count++;
       await new Promise(resolve => setTimeout(resolve, apiThrottle));
     } catch (err) {
       console.error(`[Worker] Flush Failure ${b.href}:`, err);

@@ -6,6 +6,12 @@ test.describe('The Universal Fortress', () => {
   test.beforeEach(async ({ page }) => {
     page.on('console', msg => console.log(`[BROWSER] ${msg.type()}: ${msg.text()}`));
     page.on('pageerror', err => console.log(`[BROWSER ERROR] ${err.message}`));
+    
+    // Capture worker console logs and errors explicitly
+    page.on('worker', worker => {
+      worker.on('console', msg => console.log(`[WORKER] ${msg.type()}: ${msg.text()}`));
+      worker.on('close', () => console.log(`[WORKER] Closed: ${worker.url()}`));
+    });
   });
 
   test('Smoke Test: App Loads and shows Login', async ({ page }) => {
@@ -128,7 +134,14 @@ test.describe('The Universal Fortress', () => {
     await app.mockProxy('/posts/all', []);
     await app.mockProxy('/posts/update', { update_time: new Date().toISOString() });
     await app.mockProxy('/posts/dates', { dates: {} });
-    await app.mockProxy('/posts/add', { result_code: 'done' });
+    // Mock /posts/add to return raw XML as returned by Pinboard on success
+    await page.context().route(url => url.href.includes('/posts/add'), async (r) => {
+      await r.fulfill({
+        status: 200,
+        contentType: 'text/xml',
+        body: '<result code="done" />',
+      });
+    });
 
     await app.goto();
     await app.login('test:TOKEN');
@@ -358,8 +371,21 @@ test.describe('The Universal Fortress', () => {
     await app.mockProxy('/posts/dates', { dates: {} });
 
     // Mocks for the workaround steps
-    await app.mockProxy('/posts/add', { result_code: 'done' });
-    await app.mockProxy('/tags/delete', { result_code: 'done' });
+    // Mock /posts/add and /tags/delete to return raw XML as returned by Pinboard on success
+    await page.context().route(url => url.href.includes('/posts/add'), async (r) => {
+      await r.fulfill({
+        status: 200,
+        contentType: 'text/xml',
+        body: '<result code="done" />',
+      });
+    });
+    await page.context().route(url => url.href.includes('/tags/delete'), async (r) => {
+      await r.fulfill({
+        status: 200,
+        contentType: 'text/xml',
+        body: '<result code="done" />',
+      });
+    });
 
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
@@ -637,6 +663,56 @@ test.describe('The Universal Fortress', () => {
     // 4. Assert that the session is restored from localStorage fallback
     await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 15000 });
     await app.expectOnline();
+  });
+
+  test('Scenario 24: Search Query Clear Scroll Reset', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-scroll-reset-${Math.random().toString(36).substring(7)}.db`;
+
+    // 1. Mock 15 bookmarks to ensure scrollability
+    const bookmarks = Array.from({ length: 15 }, (_, i) => ({
+      href: `https://test-${i}.com`,
+      description: `Bookmark ${i}`,
+      tags: i % 2 === 0 ? 'even' : 'odd',
+      time: `2023-10-01T12:00:${i.toString().padStart(2, '0')}Z`
+    }));
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', bookmarks);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    // 2. Login
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await expect(app.syncStatus).toContainText('Archive Online: 15', { timeout: 10000 });
+
+    // 3. Scroll container down
+    const scrollContainer = page.locator('.archive-scroll-container');
+    await scrollContainer.evaluate(el => el.scrollTop = 200);
+    
+    // Verify physical scrollTop is greater than 0
+    let scrollTop = await scrollContainer.evaluate(el => el.scrollTop);
+    expect(scrollTop).toBeGreaterThan(0);
+
+    // 4. Search for "even"
+    await app.search('even');
+    
+    // ScrollTop should reset to 0
+    scrollTop = await scrollContainer.evaluate(el => el.scrollTop);
+    expect(scrollTop).toBe(0);
+
+    // 5. Scroll down again on search results
+    await scrollContainer.evaluate(el => el.scrollTop = 50);
+    scrollTop = await scrollContainer.evaluate(el => el.scrollTop);
+    expect(scrollTop).toBeGreaterThan(0);
+
+    // 6. Clear search query
+    await app.search('');
+    
+    // ScrollTop should reset to 0 again
+    scrollTop = await scrollContainer.evaluate(el => el.scrollTop);
+    expect(scrollTop).toBe(0);
   });
 });
 

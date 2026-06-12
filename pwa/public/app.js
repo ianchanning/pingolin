@@ -128,6 +128,12 @@ if (app.ports && app.ports.updateUrl) {
             url.searchParams.delete('q');
         }
         window.history.replaceState({}, '', url);
+        
+        // Reset scroll position to top when query changes to prevent blank virtual list
+        const container = document.querySelector('.archive-scroll-container');
+        if (container) {
+            container.scrollTop = 0;
+        }
     });
 }
 
