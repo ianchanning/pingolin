@@ -1,7 +1,7 @@
 port module Main exposing (main)
 
 import Browser
-import Html exposing (Html, div, text, button, input, h1, img, h3, a)
+import Html exposing (Html, div, text, button, input, h1, img, h3, a, span)
 import Html.Attributes exposing (placeholder, value, type_, class, style, attribute, src, href, target)
 import Html.Events exposing (onClick, onInput, preventDefaultOn)
 import Json.Encode as Encode
@@ -52,11 +52,14 @@ type alias Model =
         , description : String
         , tags : String
         }
+    , showLoginForm : Bool
+    , version : String
     }
 
 type alias Flags =
     { query : Maybe String
     , isHydrated : Bool
+    , version : String
     }
 
 init : Flags -> ( Model, Cmd Msg )
@@ -78,6 +81,8 @@ init flags =
       , scrollTop = 0
       , viewportHeight = 800
       , newBookmark = { href = "", description = "", tags = "" }
+      , showLoginForm = not flags.isHydrated
+      , version = flags.version
       }
     , if initialQuery /= "" then
         querySearch initialQuery
@@ -165,6 +170,7 @@ type Msg
     | StartSync
     | FromWorker Decode.Value
     | ToggleAddForm
+    | ToggleLoginForm
     | SetNewHref String
     | SetNewDescription String
     | SetNewTags String
@@ -213,6 +219,9 @@ update msg model =
 
         ToggleAddForm ->
             ( { model | showAddForm = not model.showAddForm }, Cmd.none )
+
+        ToggleLoginForm ->
+            ( { model | showLoginForm = not model.showLoginForm }, Cmd.none )
 
         SetNewHref href ->
             let
@@ -303,7 +312,7 @@ handleWorkerMsg msg model =
             ( { model | status = status, progress = progress }, Cmd.none )
 
         SyncCompleteMsg ->
-            ( { model | status = "Archive Restored. Finalizing...", progress = 1.0, isHydrated = True }
+            ( { model | status = "Archive Restored. Finalizing...", progress = 1.0, isHydrated = True, showLoginForm = False }
             , Cmd.batch [ queryAll, startSyncLoop model.proxyUrl model.token ]
             )
 
@@ -364,7 +373,7 @@ handleWorkerMsg msg model =
                     else
                         queryCmd
             in
-            ( { model | isHydrated = True, status = "Session Restored.", token = effectiveToken, proxyUrl = effectiveProxy }
+            ( { model | isHydrated = True, status = "Session Restored.", token = effectiveToken, proxyUrl = effectiveProxy, showLoginForm = False }
             , cmd
             )
 
@@ -392,17 +401,20 @@ view : Model -> Html Msg
 view model =
     div [ class "pingolin-fortress" ]
         [ div [ attribute "id" "masthead" ]
-            [ div [ class "top-bar", attribute "data-testid" "network-status" ] 
-                [ text (if model.isOnline then "ONLINE" else "OFFLINE") ]
+            [ div [ class "top-bar" ] 
+                [ span [ attribute "data-testid" "network-status" ] [ text (if model.isOnline then "ONLINE" else "OFFLINE") ]
+                , button [ onClick ToggleLoginForm, class "help-btn", attribute "id" "help-toggle-btn", attribute "title" "Toggle Login Form" ] [ text "?" ]
+                ]
             , img [ src "/pangolin_trans.png", attribute "id" "masthead-logo" ] []
             , h1 [] [ text "pingolin" ]
             ]
         , div [ attribute "id" "contain" ]
-            [ if not model.isHydrated || model.token == "" then
+            [ if model.showLoginForm || model.token == "" then
                 div [ class "ritual-controls", attribute "data-testid" "login-container" ]
                     [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
                     , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
                     , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
+                    , div [ class "version-tag" ] [ text ("v" ++ model.version) ]
                     ]
 
               else

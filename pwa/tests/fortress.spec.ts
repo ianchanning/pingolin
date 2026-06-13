@@ -1,6 +1,8 @@
 import { test, expect, Worker } from '@playwright/test';
 import { AppPage } from './pom/AppPage';
 import { AddForm } from './pom/AddForm';
+import fs from 'fs';
+import path from 'path';
 
 test.describe('The Universal Fortress', () => {
   test.beforeEach(async ({ page }) => {
@@ -454,7 +456,7 @@ test.describe('The Universal Fortress', () => {
     }));
 
     await page.evaluate(async (items) => {
-      await window.db.debugClearDb();
+      await window.db.debugClearDb(false);
       for (const item of items) {
         await window.db.send('LOCAL_UPSERT', item);
       }
@@ -506,7 +508,7 @@ test.describe('The Universal Fortress', () => {
 
     // 1. Setup DB with some items
     await page.evaluate(async () => {
-      await window.db.debugClearDb();
+      await window.db.debugClearDb(false);
       await window.db.send('LOCAL_UPSERT', { href: 'https://a.com', description: 'Apple', tags: 'fruit', time: new Date().toISOString() });
       await window.db.send('LOCAL_UPSERT', { href: 'https://b.com', description: 'Banana', tags: 'fruit', time: new Date().toISOString() });
       await window.db.query("INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?)", [new Date().toISOString()]);
@@ -717,6 +719,74 @@ test.describe('The Universal Fortress', () => {
     await expect.poll(async () => {
       return await scrollContainer.evaluate(el => el.scrollTop);
     }).toBe(0);
+  });
+
+  test('Scenario 25: Debugging Tools and Help Toggle Verification', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-debug-tools-${Math.random().toString(36).substring(7)}.db`;
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', [
+      { href: 'https://test-debug.com', description: 'Debug Bookmark', tags: 'debug', time: '2023-10-01T12:00:00Z' }
+    ]);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    // 1. Initial Load & Login
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await app.expectBookmarkCount(1, { timeout: 10000 });
+
+    // 2. Verify help button toggles the login container
+    const helpBtn = page.locator('#help-toggle-btn');
+    await expect(helpBtn).toBeVisible();
+
+    // Login container should be hidden initially when logged in
+    await expect(app.loginContainer).not.toBeVisible();
+
+    // Click help toggles it visible
+    await helpBtn.click();
+    await expect(app.loginContainer).toBeVisible();
+
+    // Verify it displays the version of the PWA
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
+    const expectedVersion = `v${pkg.version}`;
+    const versionTag = page.locator('.version-tag');
+    await expect(versionTag).toBeVisible();
+    await expect(versionTag).toContainText(expectedVersion);
+
+    // Click help again toggles it hidden
+    await helpBtn.click();
+    await expect(app.loginContainer).not.toBeVisible();
+
+    // 3. Verify window.db is exposed and works
+    const dbResult = await page.evaluate(async () => {
+      return await (window as any).db.query("SELECT description FROM bookmarks WHERE tags = 'debug'");
+    });
+    expect(dbResult).toEqual([{ description: 'Debug Bookmark' }]);
+
+    // 4. Verify refreshApp() works
+    // Let's modify the local database manually and verify refreshApp pulls updates
+    await page.evaluate(async () => {
+      await (window as any).db.query("UPDATE bookmarks SET description = 'Refreshed' WHERE tags = 'debug'");
+      await (window as any).refreshApp();
+    });
+    const reloadedItem = app.getBookmarkItem(0);
+    await reloadedItem.expectTitle('Refreshed');
+
+    // 5. Verify debugClearDb() resets back to login state
+    // We register the mock for initial boot again because it will reload the page
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', []);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    await page.evaluate(async () => {
+      await (window as any).db.debugClearDb();
+    });
+
+    // Page should reload and we should see the login container open by default
+    await expect(app.loginContainer).toBeVisible({ timeout: 15000 });
   });
 });
 

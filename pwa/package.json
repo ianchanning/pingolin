@@ -4,8 +4,10 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "predev": "node generate-version.js",
     "dev": "concurrently -n \"SERVER,ELM\" -c \"cyan,magenta\" \"node server.js\" \"npm run watch:elm\"",
     "watch:elm": "chokidar 'src/**/*.elm' -c 'elm make src/Main.elm --output=public/main.js' --initial",
+    "prebuild": "node generate-version.js",
     "build": "elm make src/Main.elm --output=public/main.js --optimize && mkdir -p dist && cp -rv public/* dist/ && touch dist/.nojekyll",
     "test": "playwright test"
   },

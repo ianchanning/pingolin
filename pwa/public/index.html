@@ -185,11 +185,39 @@
         
         .ritual-controls { margin-bottom: 2em; padding: 1.5em; background: #F3F3CC; border: 1px solid var(--border); display: flex; gap: 0.5rem; }
         .add-form { background: #F2F2DE; border: 1px solid #8B8B5C; padding: 1rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; flex-shrink: 0; }
+        
+        .help-btn {
+            background: rgba(0, 0, 0, 0.12);
+            border: none;
+            color: var(--header-bg);
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-left: 10px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            vertical-align: middle;
+        }
+        .help-btn:hover {
+            background: rgba(0, 0, 0, 0.25);
+        }
+        .version-tag {
+            font-size: 0.8em;
+            color: #775;
+            align-self: center;
+            margin-left: auto;
+        }
     </style>
 </head>
 <body>
     <div id="elm-app"></div>
     <script src="/main.js"></script>
+    <script src="/version.js"></script>
     <script src="/app.js"></script>
 </body>
 </html>
