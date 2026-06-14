@@ -8,6 +8,15 @@ import sqlite3InitModule from '/vendor/sqlite3-bundler-friendly.mjs';
 let db = null;
 let dbPromise = null;
 
+// Helper to send consistent SYNC_PROGRESS messages
+const postSyncProgress = (status, progress = 0, id) => {
+  const payload = { status, progress };
+  if (id !== undefined) {
+    self.postMessage({ type: 'SYNC_PROGRESS', payload, id });
+  } else {
+    self.postMessage({ type: 'SYNC_PROGRESS', payload });
+  }
+};
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS bookmarks (
     href TEXT PRIMARY KEY,
@@ -209,7 +218,7 @@ const renameTagWorkaround = async (oldTag, newTag, proxyUrl, authToken, id) => {
   try {
     const statusMsg = `Renaming tag: ${oldTag} -> ${newTag}...`;
     console.log(`[Worker] ${statusMsg}`);
-    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: statusMsg }, id });
+    postSyncProgress(statusMsg, 0, id);
 
     const bookmarks = db.exec({
       sql: "SELECT * FROM bookmarks WHERE (' ' || tags || ' ') LIKE ?",
@@ -270,13 +279,7 @@ const flushPendingChanges = async (proxyUrl, authToken) => {
         ? `Syncing: deleting bookmark: ${b.href}`
         : `Syncing: uploading bookmark: ${b.href} (${b.description})`;
       console.log(`[Worker] ${statusMsg}`);
-      self.postMessage({ 
-        type: 'SYNC_PROGRESS', 
-        payload: { 
-          status: statusMsg, 
-          progress: count / pending.length 
-        } 
-      });
+      postSyncProgress(statusMsg, count / pending.length);
 
       if (b.sync_status === 'PENDING_DELETE') {
         await deleteBookmark(proxyUrl, authToken, b.href);
@@ -327,7 +330,7 @@ const checkForUpdates = async (proxyUrl, authToken) => {
       await performDeltaSync(proxyUrl, authToken, lastSyncTime, update_time);
     }
     await performDatesHack(proxyUrl, authToken);
-    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Archive is current.', progress: 1.0 } });
+    postSyncProgress('Archive is current.', 1.0);
   } catch (err) {
     console.error('[Worker] Update Check Failure:', err);
     throw err;
@@ -354,7 +357,7 @@ const performDeltaSync = async (proxyUrl, authToken, fromDt, serverTime) => {
   }
 
   db.exec({ sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", bind: [serverTime] });
-  self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'Delta complete.' } });
+  postSyncProgress('Delta complete.', 0);
 };
 
 const performDatesHack = async (proxyUrl, authToken) => {
@@ -569,7 +572,7 @@ self.onmessage = async (e) => {
 };
 
 const hydrateArchive = async (proxyUrl, authToken, id) => {
-  self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: 'NETWORK: Summing archive...', progress: 0.1 }, id });
+  postSyncProgress('NETWORK: Summing archive...', 0.1, id);
   const bookmarks = await fetchRitual(proxyUrl, '/posts/all', { auth_token: authToken, format: 'json' });
   if (!bookmarks) throw new Error('Server Ritual Error: Empty or Invalid Archive');
   
@@ -585,7 +588,7 @@ const hydrateArchive = async (proxyUrl, authToken, id) => {
       }
       stmt.finalize();
     });
-    self.postMessage({ type: 'SYNC_PROGRESS', payload: { status: `LOCAL: Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`, progress: 0.3 + (0.6 * (i + CHUNK_SIZE) / bookmarks.length) }, id });
+    postSyncProgress(`LOCAL: Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`, 0.3 + (0.6 * (i + CHUNK_SIZE) / bookmarks.length), id);
     await new Promise(r => setTimeout(r, 0));
   }
 
