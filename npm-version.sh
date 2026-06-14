@@ -22,7 +22,8 @@ echo "Bumping version..."
 
 # 3. Run npm version (redirecting its noisy output to stderr)
 npm version "$VERSION_TYPE" -w "$PACKAGE_NAME" --no-git-tag-version >&2
-npm build
+
+node pwa/generate-version.js
 
 # Read the version directly from the workspace package.json
 # This avoids parsing noisy npm CLI output
