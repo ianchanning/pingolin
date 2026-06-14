@@ -8,7 +8,7 @@ const outputPath = path.join(__dirname, 'public', 'version.js');
 
 try {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-    const content = `// Generated automatically by generate-version.js. Do not edit.\nwindow.PWA_VERSION = '${pkg.version}';\n`;
+    const content = `// Generated automatically by generate-version.js. Do not edit.\nwindow.PACKAGE_VERSION = '${pkg.version}';\n`;
     fs.writeFileSync(outputPath, content, 'utf8');
     console.log(`[Version Generator] Generated public/version.js with version: ${pkg.version}`);
 } catch (err) {
