@@ -6,9 +6,11 @@
     "pwa"
   ],
   "allowScripts": {
-    "esbuild@0.27.3": true,
     "sharp@0.34.5": true,
     "workerd@1.20260601.1": true
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
   },
   "version": "2.0.1"
 }

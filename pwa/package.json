@@ -15,7 +15,8 @@
     "@playwright/test": "^1.44.1",
     "chokidar-cli": "^3.0.0",
     "concurrently": "^10.0.3",
-    "elm": "^0.19.1-6"
+    "elm": "^0.19.1-6",
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "@sqlite.org/sqlite-wasm": "^3.46.0-build1"
