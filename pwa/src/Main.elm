@@ -7,6 +7,9 @@ import Html.Events exposing (onClick, onInput, preventDefaultOn)
 import Dict exposing (Dict)
 import Json.Encode as Encode
 import Json.Decode as Decode exposing (Decoder)
+import Task
+import Time
+import Process
 
 -- PORTS
 
@@ -33,6 +36,27 @@ type alias Bookmark =
     , tags : List String
     , time : String
     , syncStatus : SyncStatus
+    }
+
+-- Sync lifecycle: what is the State Machine currently doing?
+type SyncPhase
+    = SyncIdle
+    | SyncCheckingUpdate
+    | SyncFlushing { index : Int, total : Int }
+    -- Phase 5.3: Dates Hack delta reconciliation states
+    | SyncCheckingDates                  -- waiting for /posts/dates from server
+    | SyncComparingDates                 -- waiting for local date counts
+    | SyncReconcilingDay String          -- waiting for /posts/get?dt=<date>
+    | SyncPruningDay String              -- waiting for local hrefs to diff against server
+
+-- A bookmark row from SQLite that is awaiting upstream sync.
+type alias PendingRow =
+    { href : String
+    , description : String
+    , extended : String
+    , tags : String
+    , time : String
+    , syncStatus : String
     }
 
 -- RPC request lifecycle state.
@@ -63,6 +87,14 @@ type alias Model =
     , showLoginForm : Bool
     , version : String
     , inFlightRpcs : Dict String RpcState
+    -- Phase 5.2: Sovereign time & flush queue
+    , syncPhase : SyncPhase
+    , lastSyncTime : String
+    , pendingFlush : List PendingRow
+    -- Phase 5.3: Dates Hack delta reconciliation scratch state
+    , serverDates : Dict String Int       -- date -> server count (from /posts/dates)
+    , pendingDateReconciles : List String  -- mismatch dates still to process
+    , dayServerHrefs : List String         -- server hrefs for the date being reconciled
     }
 
 type alias Flags =
@@ -93,6 +125,12 @@ init flags =
       , showLoginForm = not flags.isHydrated
       , version = flags.version
       , inFlightRpcs = Dict.empty
+      , syncPhase = SyncIdle
+      , lastSyncTime = ""
+      , pendingFlush = []
+      , serverDates = Dict.empty
+      , pendingDateReconciles = []
+      , dayServerHrefs = []
       }
     , if initialQuery /= "" then
         querySearch initialQuery
@@ -152,9 +190,10 @@ workerMessageDecoder =
 
                     "SESSION_RESTORED" ->
                         Decode.at [ "payload" ]
-                            (Decode.map2 SessionRestoredMsg
+                            (Decode.map3 SessionRestoredMsg
                                 (Decode.oneOf [ Decode.field "token" Decode.string, Decode.succeed "" ])
                                 (Decode.oneOf [ Decode.field "proxyUrl" Decode.string, Decode.succeed "" ])
+                                (Decode.oneOf [ Decode.field "lastSync" Decode.string, Decode.succeed "" ])
                             )
 
                     "RPC_SUCCESS" ->
@@ -179,7 +218,7 @@ type WorkerMsg
     | TagSuggestionsMsg (List String)
     | ErrorMsg String
     | RefreshRequiredMsg
-    | SessionRestoredMsg String String
+    | SessionRestoredMsg String String String  -- token, proxyUrl, lastSync
     | RpcSuccessMsg String (Maybe Decode.Value)  -- id, optional payload
     | RpcErrorMsg String String String            -- id, message, code
     | UnknownMsg
@@ -203,6 +242,8 @@ type Msg
     | OnScroll Int
     | OnResize Int
     | ManualRefresh
+    | Tick Time.Posix
+    | FlushNext
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -297,9 +338,46 @@ update msg model =
             ( { model | viewportHeight = height }, Cmd.none )
 
         ManualRefresh ->
-            -- Phase 5.2: Full delta-sync will be re-implemented here via RPC_FETCH.
-            -- For now, re-query local DB to refresh the UI.
-            ( { model | status = "Refreshing..." }, queryAll )
+            -- Full heartbeat: check for server updates AND flush any pending local mutations.
+            if model.token == "" || model.proxyUrl == "" || isSyncing model.syncPhase then
+                ( { model | status = "Refreshing..." }, queryAll )
+            else
+                let
+                    ( m1, fetchCmd ) =
+                        rpcFetch "hb-update"
+                            "/posts/update"
+                            [ ( "auth_token", model.token ), ( "format", "json" ) ]
+                            { model | syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
+
+                    ( m2, pendingCmd ) =
+                        rpcSqlQuery "hb-pending"
+                            "SELECT href, description, extended, tags, time, sync_status FROM bookmarks WHERE sync_status IN ('PENDING_INSERT', 'PENDING_UPDATE', 'PENDING_DELETE') ORDER BY local_last_modified ASC"
+                            []
+                            m1
+                in
+                ( m2, Cmd.batch [ fetchCmd, pendingCmd ] )
+
+        Tick _ ->
+            if isSyncing model.syncPhase || model.token == "" || model.proxyUrl == "" || not model.isHydrated then
+                ( model, Cmd.none )
+            else
+                let
+                    ( m1, fetchCmd ) =
+                        rpcFetch "hb-update"
+                            "/posts/update"
+                            [ ( "auth_token", model.token ), ( "format", "json" ) ]
+                            { model | syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
+
+                    ( m2, pendingCmd ) =
+                        rpcSqlQuery "hb-pending"
+                            "SELECT href, description, extended, tags, time, sync_status FROM bookmarks WHERE sync_status IN ('PENDING_INSERT', 'PENDING_UPDATE', 'PENDING_DELETE') ORDER BY local_last_modified ASC"
+                            []
+                            m1
+                in
+                ( m2, Cmd.batch [ fetchCmd, pendingCmd ] )
+
+        FlushNext ->
+            flushNext model
 
 queryAll : Cmd msg
 queryAll =
@@ -358,50 +436,64 @@ handleWorkerMsg msg model =
             else
                 ( model, querySearch model.query )
 
-        SessionRestoredMsg token proxyUrl ->
+        SessionRestoredMsg token proxyUrl lastSync ->
             let
                 effectiveToken =
-                    if token == "" then
-                        model.token
-
-                    else
-                        token
+                    if token == "" then model.token else token
 
                 effectiveProxy =
-                    if proxyUrl == "" then
-                        model.proxyUrl
+                    if proxyUrl == "" then model.proxyUrl else proxyUrl
 
-                    else
-                        proxyUrl
+                restoredModel =
+                    { model
+                    | isHydrated = True
+                    , status = "Session Restored."
+                    , token = effectiveToken
+                    , proxyUrl = effectiveProxy
+                    , showLoginForm = False
+                    , lastSyncTime = lastSync
+                    }
 
                 queryCmd =
-                    if model.query == "" then
-                        queryAll
-
-                    else
-                        querySearch model.query
-
-                -- Phase 5.2: Elm heartbeat (Time.every) will replace the old JS timer.
-                -- Auto-sync will resume once the Sovereign heartbeat is wired in.
-                cmd =
-                    queryCmd
+                    if model.query == "" then queryAll else querySearch model.query
             in
-            ( { model | isHydrated = True, status = "Session Restored.", token = effectiveToken, proxyUrl = effectiveProxy, showLoginForm = False }
-            , cmd
-            )
+            -- Auto-trigger the heartbeat check immediately after session restore.
+            -- This fixes Zombie DB detection and surfaces proxy errors on startup.
+            if effectiveToken /= "" && effectiveProxy /= "" then
+                let
+                    ( m1, fetchCmd ) =
+                        rpcFetch "hb-update"
+                            "/posts/update"
+                            [ ( "auth_token", effectiveToken ), ( "format", "json" ) ]
+                            { restoredModel | syncPhase = SyncCheckingUpdate }
+
+                    ( m2, pendingCmd ) =
+                        rpcSqlQuery "hb-pending"
+                            "SELECT href, description, extended, tags, time, sync_status FROM bookmarks WHERE sync_status IN ('PENDING_INSERT', 'PENDING_UPDATE', 'PENDING_DELETE') ORDER BY local_last_modified ASC"
+                            []
+                            m1
+                in
+                ( m2, Cmd.batch [ queryCmd, fetchCmd, pendingCmd ] )
+            else
+                ( restoredModel, queryCmd )
 
         RpcSuccessMsg rpcId payload ->
-            ( { model | inFlightRpcs = Dict.insert rpcId (RpcSuccess payload) model.inFlightRpcs }
-            , Cmd.none
-            )
+            let
+                updatedModel =
+                    { model | inFlightRpcs = Dict.insert rpcId (RpcSuccess payload) model.inFlightRpcs }
+            in
+            routeRpcSuccess rpcId payload updatedModel
 
         RpcErrorMsg rpcId message code ->
-            ( { model
-              | inFlightRpcs = Dict.insert rpcId (RpcFailed { message = message, code = code }) model.inFlightRpcs
-              , status = "Error (" ++ code ++ "): " ++ message
-              }
-            , Cmd.none
-            )
+            let
+                updatedModel =
+                    { model
+                    | inFlightRpcs = Dict.insert rpcId (RpcFailed { message = message, code = code }) model.inFlightRpcs
+                    , syncPhase = SyncIdle
+                    , status = "Error (" ++ code ++ "): " ++ message
+                    }
+            in
+            ( updatedModel, Cmd.none )
 
         UnknownMsg ->
             ( model, Cmd.none )
@@ -409,7 +501,355 @@ handleWorkerMsg msg model =
 
 -- startSyncLoop removed in Phase 5.0.
 -- The JS heartbeat (setInterval) has been deleted from the worker.
--- Phase 5.2 will introduce an Elm-native Time.every subscription instead.
+-- Phase 5.2 introduces Elm-native Time.every + Process.sleep orchestration.
+
+-- ── SYNC PHASE HELPERS (Phase 5.2) ────────────────────────────────────
+
+isSyncing : SyncPhase -> Bool
+isSyncing phase =
+    case phase of
+        SyncIdle -> False
+        _ -> True
+
+-- ── RPC ROUTING ──────────────────────────────────────────────────
+-- Routes completed RPC responses to the correct business logic handler.
+-- This is the Sovereign's dispatch board.
+
+routeRpcSuccess : String -> Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+routeRpcSuccess rpcId maybePayload model =
+    let
+        refreshCmd =
+            if model.query == "" then queryAll else querySearch model.query
+    in
+    case rpcId of
+        "hb-update"        -> handleHeartbeatUpdate maybePayload model
+        "hb-pending"       -> handleHeartbeatPending maybePayload model
+        "hb-flush-add"     -> handleFlushDone model
+        "hb-flush-delete"  -> handleFlushDeleteDone model
+        -- After marking a record synced or deleted, refresh the visible list
+        "hb-mark-synced"   -> ( model, refreshCmd )
+        "hb-mark-deleted"  -> ( model, refreshCmd )
+        -- Phase 5.3: Dates Hack reconciliation chain
+        "hb-dates-server"  -> handleDatesServerResult maybePayload model
+        "hb-dates-local"   -> handleDatesLocalResult maybePayload model
+        "hb-day-get"       -> handleDayGetResult maybePayload model
+        "hb-day-local"     -> handleDayLocalResult maybePayload model
+        "hb-day-prune"     ->
+            let
+                ( nextModel, nextCmd ) = reconcileNextDay model
+            in
+            ( nextModel, Cmd.batch [ refreshCmd, nextCmd ] )
+        _                  -> ( model, Cmd.none )
+
+-- ── HEARTBEAT HANDLERS ───────────────────────────────────────────
+
+handleHeartbeatUpdate : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleHeartbeatUpdate maybePayload model =
+    let
+        serverTime =
+            maybePayload
+                |> Maybe.andThen
+                    (\v -> Decode.decodeValue (Decode.field "update_time" Decode.string) v |> Result.toMaybe)
+                |> Maybe.withDefault ""
+
+        needsSync =
+            serverTime /= "" && serverTime /= model.lastSyncTime
+    in
+    if needsSync then
+        -- Server has newer data: re-trigger the Big Pull exception
+        let
+            hydrateEnvelope =
+                Encode.object
+                    [ ( "type", Encode.string "START_HYDRATION" )
+                    , ( "payload"
+                      , Encode.object
+                            [ ( "proxyUrl", Encode.string model.proxyUrl )
+                            , ( "authToken", Encode.string model.token )
+                            ]
+                      )
+                    , ( "id", Encode.string "hb-hydrate" )
+                    ]
+        in
+        ( { model | syncPhase = SyncIdle, status = "Syncing...", lastSyncTime = serverTime }
+        , toWorker hydrateEnvelope
+        )
+    else
+        -- Up-to-date: run the Dates Hack to catch remote deletions.
+        let
+            ( m1, datesCmd ) =
+                rpcFetch "hb-dates-server"
+                    "/posts/dates"
+                    [ ( "auth_token", model.token ), ( "format", "json" ) ]
+                    { model | syncPhase = SyncCheckingDates, status = "Checking for deletions..." }
+        in
+        ( m1, datesCmd )
+
+pendingRowDecoder : Decoder PendingRow
+pendingRowDecoder =
+    Decode.map6 PendingRow
+        (Decode.field "href" Decode.string)
+        (Decode.field "description" (Decode.oneOf [ Decode.string, Decode.succeed "" ]))
+        (Decode.field "extended" (Decode.oneOf [ Decode.string, Decode.succeed "" ]))
+        (Decode.field "tags" (Decode.oneOf [ Decode.string, Decode.succeed "" ]))
+        (Decode.field "time" Decode.string)
+        (Decode.field "sync_status" Decode.string)
+
+handleHeartbeatPending : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleHeartbeatPending maybePayload model =
+    let
+        pending =
+            maybePayload
+                |> Maybe.andThen
+                    (\v -> Decode.decodeValue (Decode.list pendingRowDecoder) v |> Result.toMaybe)
+                |> Maybe.withDefault []
+    in
+    if List.isEmpty pending then
+        ( model, Cmd.none )
+    else
+        flushNext
+            { model
+            | pendingFlush = pending
+            , syncPhase = SyncFlushing { index = 0, total = List.length pending }
+            }
+
+-- ── FLUSH LOOP ───────────────────────────────────────────────────
+-- Throttled upstream flush: one API call per 3 seconds via Process.sleep.
+
+flushNext : Model -> ( Model, Cmd Msg )
+flushNext model =
+    case model.pendingFlush of
+        [] ->
+            ( { model | syncPhase = SyncIdle, pendingFlush = [], status = "Flush complete." }, Cmd.none )
+
+        first :: _ ->
+            let
+                flushIndex =
+                    case model.syncPhase of
+                        SyncFlushing { index } -> index
+                        _ -> 0
+
+                total =
+                    case model.syncPhase of
+                        SyncFlushing flush -> flush.total
+                        _ -> List.length model.pendingFlush
+
+                statusText =
+                    "Flushing " ++ String.fromInt (flushIndex + 1) ++ " of " ++ String.fromInt total
+
+                ( newModel, cmd ) =
+                    if first.syncStatus == "PENDING_DELETE" then
+                        rpcFetch "hb-flush-delete"
+                            "/posts/delete"
+                            [ ( "url", first.href )
+                            , ( "auth_token", model.token )
+                            , ( "format", "json" )
+                            ]
+                            model
+                    else
+                        rpcFetch "hb-flush-add"
+                            "/posts/add"
+                            [ ( "url", first.href )
+                            , ( "description", first.description )
+                            , ( "extended", first.extended )
+                            , ( "tags", first.tags )
+                            , ( "dt", first.time )
+                            , ( "auth_token", model.token )
+                            , ( "format", "json" )
+                            ]
+                            model
+            in
+            ( { newModel | status = statusText }, cmd )
+
+handleFlushDone : Model -> ( Model, Cmd Msg )
+handleFlushDone model =
+    case model.pendingFlush of
+        [] ->
+            ( { model | syncPhase = SyncIdle }, Cmd.none )
+
+        first :: rest ->
+            let
+                nextPhase =
+                    case model.syncPhase of
+                        SyncFlushing { index, total } -> SyncFlushing { index = index + 1, total = total }
+                        other -> other
+
+                ( markedModel, markCmd ) =
+                    rpcSqlExec "hb-mark-synced"
+                        "UPDATE bookmarks SET sync_status = 'SYNCHRONIZED' WHERE href = ?"
+                        [ Encode.string first.href ]
+                        { model | pendingFlush = rest, syncPhase = nextPhase }
+            in
+            ( markedModel
+            , Cmd.batch
+                [ markCmd
+                , Task.perform (\_ -> FlushNext) (Process.sleep 3000)
+                ]
+            )
+
+handleFlushDeleteDone : Model -> ( Model, Cmd Msg )
+handleFlushDeleteDone model =
+    case model.pendingFlush of
+        [] ->
+            ( { model | syncPhase = SyncIdle }, Cmd.none )
+
+        first :: rest ->
+            let
+                nextPhase =
+                    case model.syncPhase of
+                        SyncFlushing { index, total } -> SyncFlushing { index = index + 1, total = total }
+                        other -> other
+
+                ( markedModel, deleteCmd ) =
+                    rpcSqlExec "hb-mark-deleted"
+                        "DELETE FROM bookmarks WHERE href = ?"
+                        [ Encode.string first.href ]
+                        { model | pendingFlush = rest, syncPhase = nextPhase }
+            in
+            ( markedModel
+            , Cmd.batch
+                [ deleteCmd
+                , Task.perform (\_ -> FlushNext) (Process.sleep 3000)
+                ]
+            )
+
+-- ── PHASE 5.3: DATES HACK RECONCILIATION ─────────────────────────────────────
+-- Pure functional delta-sync: detect remote deletions by comparing date counts.
+
+serverDatesDecoder : Decoder (Dict String Int)
+serverDatesDecoder =
+    Decode.field "dates" (Decode.dict Decode.string)
+        |> Decode.map (Dict.map (\_ v -> String.toInt v |> Maybe.withDefault 0))
+
+localDateCountDecoder : Decoder (Dict String Int)
+localDateCountDecoder =
+    Decode.list
+        (Decode.map2 Tuple.pair
+            (Decode.field "d" Decode.string)
+            (Decode.field "c" Decode.int)
+        )
+        |> Decode.map Dict.fromList
+
+hrefListDecoder : Decoder (List String)
+hrefListDecoder =
+    Decode.list (Decode.field "href" Decode.string)
+
+handleDatesServerResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDatesServerResult maybePayload model =
+    let
+        dates =
+            maybePayload
+                |> Maybe.andThen (\v -> Decode.decodeValue serverDatesDecoder v |> Result.toMaybe)
+                |> Maybe.withDefault Dict.empty
+    in
+    -- Store server dates and query local counts in parallel
+    let
+        ( m1, localCmd ) =
+            rpcSqlQuery "hb-dates-local"
+                "SELECT date(time) as d, count(*) as c FROM bookmarks WHERE sync_status = 'SYNCHRONIZED' GROUP BY d"
+                []
+                { model | serverDates = dates, syncPhase = SyncComparingDates }
+    in
+    ( m1, localCmd )
+
+handleDatesLocalResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDatesLocalResult maybePayload model =
+    let
+        localCounts =
+            maybePayload
+                |> Maybe.andThen (\v -> Decode.decodeValue localDateCountDecoder v |> Result.toMaybe)
+                |> Maybe.withDefault Dict.empty
+
+        -- Find dates where local count exceeds server count (deletions happened)
+        mismatches =
+            Dict.keys localCounts
+                |> List.filter
+                    (\date ->
+                        let
+                            localC = Dict.get date localCounts |> Maybe.withDefault 0
+                            serverC = Dict.get date model.serverDates |> Maybe.withDefault 0
+                        in
+                        localC > serverC
+                    )
+    in
+    if List.isEmpty mismatches then
+        ( { model | syncPhase = SyncIdle, status = "Synchronized." }, Cmd.none )
+    else
+        let
+            m1 = { model | pendingDateReconciles = mismatches }
+        in
+        reconcileNextDay m1 |> Tuple.mapFirst (\m -> m)
+
+reconcileNextDay : Model -> ( Model, Cmd Msg )
+reconcileNextDay model =
+    case model.pendingDateReconciles of
+        [] ->
+            ( { model | syncPhase = SyncIdle, status = "Synchronized." }, Cmd.none )
+
+        date :: _ ->
+            let
+                ( m1, cmd ) =
+                    rpcFetch "hb-day-get"
+                        "/posts/get"
+                        [ ( "dt", date )
+                        , ( "auth_token", model.token )
+                        , ( "format", "json" )
+                        ]
+                        { model | syncPhase = SyncReconcilingDay date, status = "Reconciling " ++ date ++ "..." }
+            in
+            ( m1, cmd )
+
+handleDayGetResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDayGetResult maybePayload model =
+    let
+        serverHrefs =
+            maybePayload
+                |> Maybe.andThen (\v -> Decode.decodeValue hrefListDecoder v |> Result.toMaybe)
+                |> Maybe.withDefault []
+
+        date =
+            case model.syncPhase of
+                SyncReconcilingDay d -> d
+                _ -> List.head model.pendingDateReconciles |> Maybe.withDefault ""
+    in
+    let
+        ( m1, localCmd ) =
+            rpcSqlQuery "hb-day-local"
+                "SELECT href FROM bookmarks WHERE date(time) = ? AND sync_status = 'SYNCHRONIZED'"
+                [ Encode.string date ]
+                { model | dayServerHrefs = serverHrefs, syncPhase = SyncPruningDay date }
+    in
+    ( m1, localCmd )
+
+handleDayLocalResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDayLocalResult maybePayload model =
+    let
+        localHrefs =
+            maybePayload
+                |> Maybe.andThen (\v -> Decode.decodeValue hrefListDecoder v |> Result.toMaybe)
+                |> Maybe.withDefault []
+
+        ghosts =
+            List.filter (\h -> not (List.member h model.dayServerHrefs)) localHrefs
+
+        -- Always pop the current date from the queue
+        remaining =
+            List.drop 1 model.pendingDateReconciles
+    in
+    if List.isEmpty ghosts then
+        -- No ghosts on this date; move to next
+        reconcileNextDay { model | pendingDateReconciles = remaining }
+    else
+        let
+            deleteStmts =
+                List.map
+                    (\href -> ( "DELETE FROM bookmarks WHERE href = ?", [ Encode.string href ] ))
+                    ghosts
+
+            ( m1, pruneCmd ) =
+                rpcSqlTransaction "hb-day-prune" deleteStmts
+                    { model | pendingDateReconciles = remaining }
+        in
+        ( m1, pruneCmd )
 
 -- ── RPC BUILDER HELPERS (Phase 5.1) ──────────────────────────────────────────
 -- These encode a well-formed RPC envelope AND mark the request as Pending
@@ -617,13 +1057,17 @@ viewTag tag =
 -- SUBSCRIPTIONS
 
 subscriptions : Model -> Sub Msg
-subscriptions _ =
+subscriptions model =
     Sub.batch
         [ fromWorker FromWorker
         , networkStatus SetOnline
         , tagSuggestions SetTagSuggestions
         , viewportSize OnResize
         , scrollPosition OnScroll
+        , if model.token /= "" && model.isHydrated then
+            Time.every (60 * 1000) Tick
+          else
+            Sub.none
         ]
 
 main : Program Flags Model Msg

@@ -19,11 +19,11 @@ To achieve true 30-year `0M` (Zero Maintenance) reliability, we must extract all
 - [x] **Implement Request Tracking:** `inFlightRpcs : Dict String RpcState` added to Model and initialised to `Dict.empty`. All RPC builder helpers (`rpcFetch`, `rpcSqlQuery`, `rpcSqlExec`, `rpcSqlTransaction`) atomically insert `RpcPending` and dispatch `toWorker`.
 - [x] **Strict Deserialization:** `workerMessageDecoder` now decodes `RPC_SUCCESS` payload as opaque `Decode.Value` (preserved for Phase 5.2+ routing). `RPC_ERROR` now carries `id`, `message`, and `code`.
 
-## Phase 5.2: Sovereign Time & The Flush Queue
+## Phase 5.2: Sovereign Time & The Flush Queue ✅
 **Goal:** The State Machine assumes absolute control over the passage of time and network mutation pacing.
-- [ ] **Deterministic Heartbeat:** The State Machine's own effect-scheduler (e.g., Elm's `Time.every`) triggers the synchronization loop.
-- [ ] **The Flush Query:** The UI triggers an `RPC_SQL_QUERY` for `PENDING_*` records.
-- [ ] **Controlled Throttling:** If records exist, the State Machine enforces the mandatory 3000ms Pinboard API delay using pure delayed effects (e.g., Elm's `Process.sleep`), firing `RPC_FETCH` mutations sequentially while dynamically updating the UI ("Flushing X of Y").
+- [x] **Deterministic Heartbeat:** `Time.every (60 * 1000) Tick` fires in Elm when hydrated + credentialed. Also fires immediately on `SessionRestoredMsg` and `ManualRefresh` (↻ button), ensuring the app syncs on startup and on-demand.
+- [x] **The Flush Query:** On each heartbeat, Elm issues `RPC_SQL_QUERY "hb-pending"` for `PENDING_*` records in parallel with the `RPC_FETCH "hb-update"` check.
+- [x] **Controlled Throttling:** `flushNext` drives a `Process.sleep 3000` between each upstream `RPC_FETCH` (`/posts/add`, `/posts/delete`), with live UI status ("Flushing X of Y"). After each mark-synced/deleted, the visible list is refreshed without clearing the active search query.
 
 ## Phase 5.3: Relocating the QLPIG Dates Hack (Delta Sync)
 **Goal:** The complex, multi-step delta reconciliation becomes pure functional logic in the UI thread.

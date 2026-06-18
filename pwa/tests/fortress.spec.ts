@@ -128,9 +128,7 @@ test.describe('The Universal Fortress', () => {
     await app.expectOnline();
   });
 
-  // PHASE 5.2: Upstream flush requires Elm to detect PENDING_* records and drive throttled RPC_FETCH calls.
-  // Re-enable once the Elm State Machine orchestrates the flush loop.
-  test.skip('Scenario 7: The Upstream Flush (Reconnection)', async ({ page, context }) => {
+  test('Scenario 7: The Upstream Flush (Reconnection)', async ({ page, context }) => {
     const app = new AppPage(page);
     const addForm = new AddForm(page);
 
@@ -160,20 +158,15 @@ test.describe('The Universal Fortress', () => {
     const item = app.getBookmarkItem(0);
     await item.expectPending(true);
 
-    // 2. Go Online and trigger sync
+    // 2. Go Online — then trigger ManualRefresh (↻) to kick the flush loop
     await context.setOffline(false);
-    await page.evaluate(() => (window as any).sync.setThrottle(100));
+    await page.getByTitle('Force Sync').click();
 
-    // Let's perform another search to trigger a refresh and check if loop starts
-    await app.search('Reconnect');
-
-    // Assert that the pending icon disappears
-    await item.expectPending(false, { timeout: 15000 });
+    // Assert that the pending icon disappears within the flush window
+    await item.expectPending(false, { timeout: 20000 });
   });
 
-  // PHASE 5.2: Search persistence during sync depends on the Elm heartbeat not resetting the query.
-  // Re-enable once the Elm State Machine's sync loop is wired in and the search-aware refresh is verified.
-  test.skip('Scenario 11: Search Persistence during Sync', async ({ page }) => {
+  test('Scenario 11: Search Persistence during Sync', async ({ page }) => {
     const app = new AppPage(page);
 
     // Initial State: 2 bookmarks
@@ -196,19 +189,14 @@ test.describe('The Universal Fortress', () => {
     await expect(page.getByTestId('bookmark-item')).toHaveCount(1);
     await expect(page.getByTestId('bookmark-item')).toContainText('Apple');
 
-    // 2. Mock a NEW bookmark arriving via delta sync
+    // 2. Force a sync via ManualRefresh (↻) — the Elm heartbeat must not clear the active search
     const newBookmark = { href: 'https://c.com', description: 'Cherry', tags: 'fruit', time: '2023-10-01T12:02:00Z' };
-
-    // We need /posts/update to return a NEWER timestamp to trigger the delta fetch in the loop
-    // Note: We use a new mock route that will override the previous ones
     await app.mockProxy('/posts/update', { update_time: '2023-10-01T14:00:00Z' });
     await app.mockProxy('/posts/all', [newBookmark]);
+    await page.getByTitle('Force Sync').click();
 
-    // Force a sync trigger by calling startLoop directly
-    await page.evaluate(() => (window as any).sync.startLoop());
-
-    // If the bug exists, the list will eventually show 3 items because search is cleared.
-    // We want to ASSERT that it stays at 1.
+    // If the bug exists, the list will show 3 items because search was cleared during sync.
+    // We assert it stays at 1 — Cherry should NOT appear since search is "Apple".
     const list = page.getByTestId('bookmark-item');
     await expect(list).toHaveCount(1, { timeout: 20000 });
     await expect(list).toContainText('Apple');
@@ -284,9 +272,7 @@ test.describe('The Universal Fortress', () => {
     await expect(list.first()).toContainText('Pulse 2');
   });
 
-  // PHASE 5.2: Self-healing relies on the Elm heartbeat triggering CHECK_FOR_UPDATES.
-  // Re-enable once the Elm Time.every subscription is wired in.
-  test.skip('Scenario 14: The Zombie Database (Self-Healing Sync)', async ({ page }) => {
+  test('Scenario 14: The Zombie Database (Self-Healing Sync)', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-zombie-${Math.random().toString(36).substring(7)}.db`;
 
@@ -328,9 +314,7 @@ test.describe('The Universal Fortress', () => {
     await app.getBookmarkItem(0).expectTitle('Revived!');
   });
 
-  // PHASE 5.3: Dates Hack reconciliation moves to Elm pure logic.
-  // Re-enable once the Elm State Machine orchestrates the delta-sync via RPC_FETCH / RPC_SQL_TRANSACTION.
-  test.skip('Scenario 15: The Deletion Exorcism (The Dates Hack)', async ({ page }) => {
+  test('Scenario 15: The Deletion Exorcism (The Dates Hack)', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-dates-${Math.random().toString(36).substring(7)}.db`;
 
@@ -357,13 +341,8 @@ test.describe('The Universal Fortress', () => {
     // We use a broader route to avoid issues with parameter ordering
     await app.mockProxy('/posts/get', [b1]);
 
-    // 2. Accelerate the heartbeat and trigger sync
-    await page.evaluate(() => {
-      (window as any).sync.setInterval(2000);
-      (window as any).sync.setDebugCap(0); // Force Deletion Check
-      (window as any).sync.setThrottle(100); // Speed up reconciliation
-      (window as any).sync.startLoop();
-    });
+    // 2. Trigger sync via ↻ ManualRefresh — Elm will detect the count mismatch and prune the ghost
+    await page.getByTitle('Force Sync').click();
 
     // 3. Assert that the ghost record (b2) is pruned
     // The list count should drop to 1
@@ -542,9 +521,7 @@ test.describe('The Universal Fortress', () => {
     expect(allText.some(t => t.includes('Banana'))).toBe(true);
   });
 
-  // PHASE 5.2: Error recovery requires the Elm heartbeat to attempt the update check.
-  // Re-enable once the Elm State Machine handles RPC_ERROR(NETWORK_ERROR) on session restore.
-  test.skip('Scenario 20: Safe Recovery from Empty/Invalid Proxy URL', async ({ page }) => {
+  test('Scenario 20: Safe Recovery from Empty/Invalid Proxy URL', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-invalid-proxy-${Math.random().toString(36).substring(7)}.db`;
 
@@ -569,16 +546,17 @@ test.describe('The Universal Fortress', () => {
     // The app should boot and not crash the UI (it should restore session and stay online)
     await app.expectOnline();
 
-    // Wait for the worker to process updates check and print the void warning
-    await page.waitForTimeout(1000);
+    // The app auto-triggers a heartbeat update check on session restore.
+    // With an invalid proxy URL, the RPC_FETCH will fail and the worker logs a network error.
+    await page.waitForTimeout(2000);
 
-    const hasVoidWarning = consoleMsgs.some(m => m.includes('Ritual Void Failure') || m.includes('not a valid absolute URL'));
+    const hasVoidWarning = consoleMsgs.some(
+      m => m.includes('RPC_ERROR') || m.includes('NETWORK_ERROR') || m.includes('not a valid absolute URL') || m.includes('Ritual Void Failure')
+    );
     expect(hasVoidWarning).toBe(true);
   });
 
-  // PHASE 5.2: HTTP error propagation requires the Elm heartbeat to issue the update-check RPC_FETCH.
-  // Re-enable once Elm surfaces RPC_ERROR(HTTP_500) in the UI status field.
-  test.skip('Scenario 21: Error Status Propagation (HTTP 500/522)', async ({ page }) => {
+  test('Scenario 21: Error Status Propagation (HTTP 500/522)', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-err-prop-${Math.random().toString(36).substring(7)}.db`;
 
@@ -602,15 +580,12 @@ test.describe('The Universal Fortress', () => {
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
 
-
-
-    // We expect the status to reflect the error instead of getting stuck on "Syncing..."
-    await expect(app.syncStatus).toContainText(/HTTP 500: Cloudflare Proxy Error/, { timeout: 15000 });
+    // The session restore auto-triggers the heartbeat which hits /posts/update → HTTP 500.
+    // We expect the status to reflect the error.
+    await expect(app.syncStatus).toContainText(/Error.*HTTP_500|HTTP 500/, { timeout: 15000 });
   });
 
-  // PHASE 5.2: Delta sync requires Elm to issue RPC_FETCH for /posts/update and /posts/all.
-  // Re-enable once the Elm State Machine drives the full delta-sync loop.
-  test.skip('Scenario 22: Remote Tag Edit Ingestion', async ({ page }) => {
+  test('Scenario 22: Remote Tag Edit Ingestion', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-remote-tag-${Math.random().toString(36).substring(7)}.db`;
 
@@ -634,28 +609,14 @@ test.describe('The Universal Fortress', () => {
     const item = app.getBookmarkItem(0);
     await item.expectTags(['old-tag']);
 
-    // 2. Mock a tag edit on the server (represented as update_time changing and posts/all returning modified tag)
+    // 2. Mock a tag edit on the server and trigger sync via ↻ ManualRefresh
     const updatedBookmark = { href: 'https://edit-tags.com', description: 'Original', tags: 'new-tag', time: '2023-10-01T12:00:00Z' };
     await app.mockProxy('/posts/update', { update_time: '2023-10-01T14:00:00Z' });
     await app.mockProxy('/posts/all', [updatedBookmark]);
+    await page.getByTitle('Force Sync').click();
 
-    // Trigger sync
-    await page.evaluate(async () => {
-      (window as any).sync.setThrottle(100);
-      await (window as any).db.send('CHECK_FOR_UPDATES', {
-        proxyUrl: (window as any).sync.proxyUrl,
-        authToken: (window as any).sync.authToken
-      });
-    });
-
-    // 3. Verify that the tag updates in the UI
-    const row = await page.evaluate(async () => {
-      const db = (window as any).db;
-      return db.query("SELECT * FROM bookmarks WHERE href = 'https://edit-tags.com'");
-    });
-    console.log("DB Row after Delta Sync:", JSON.stringify(row));
-
-    await item.expectTags(['new-tag']);
+    // 3. Wait for the new sync to complete and verify the tag updated in the UI
+    await item.expectTags(['new-tag'], { timeout: 20000 });
     await item.expectNotTags(['old-tag']);
   });
 
