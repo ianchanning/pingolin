@@ -12,24 +12,21 @@ jobs:
   build-and-deploy:
     concurrency: ci-${{ github.ref }}
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: 'npm'
-          cache-dependency-path: pwa/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install and Build
-        working-directory: pwa
         run: |
           npm ci
-          npm run build
+          npm run build --workspace=pwa
 
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4.7.6
