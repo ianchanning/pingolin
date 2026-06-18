@@ -354,7 +354,7 @@ test.describe('The Universal Fortress', () => {
 
   // PHASE 5.4: Tag rename loop moves to Elm pure orchestration.
   // Re-enable once Elm drives the throttled RPC_FETCH chain for /posts/add + /tags/delete.
-  test.skip('Scenario 16: Tag Rename Workaround (Atomic Chain)', async ({ page }) => {
+  test('Scenario 16: Tag Rename Workaround (Atomic Chain)', async ({ page }) => {
     const app = new AppPage(page);
     const dbName = `test-rename-${Math.random().toString(36).substring(7)}.db`;
 

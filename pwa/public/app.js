@@ -78,6 +78,7 @@ const app = Elm.Main.init({
     version: window.PACKAGE_VERSION || '0.0.0'
   }
 });
+window.elmApp = app;
 
 window.refreshApp = async () => {
   return new Promise((resolve) => {
@@ -168,16 +169,6 @@ if (app.ports && app.ports.networkStatus) {
   const updateOnlineStatus = () => {
     const isOnline = navigator.onLine;
     app.ports.networkStatus.send(isOnline);
-    if (isOnline && window.sync && window.sync.proxyUrl && window.sync.authToken) {
-      console.log('[App] Online detected, triggering check for updates/flush...');
-      worker.postMessage({
-        type: 'CHECK_FOR_UPDATES',
-        payload: {
-          proxyUrl: window.sync.proxyUrl,
-          authToken: window.sync.authToken
-        }
-      });
-    }
   };
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
@@ -240,7 +231,9 @@ class SyncOrchestrator {
   }
 
   async renameTag(oldTag, newTag) {
-    return this.db.send('RENAME_TAG', { oldTag, newTag, proxyUrl: this.proxyUrl, authToken: this.authToken });
+    if (app.ports && app.ports.renameTagPort) {
+      app.ports.renameTagPort.send({ oldTag, newTag });
+    }
   }
 }
 

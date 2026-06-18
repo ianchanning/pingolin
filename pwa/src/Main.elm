@@ -20,6 +20,7 @@ port networkStatus : (Bool -> msg) -> Sub msg
 port tagSuggestions : (List String -> msg) -> Sub msg
 port viewportSize : (Int -> msg) -> Sub msg
 port scrollPosition : (Int -> msg) -> Sub msg
+port renameTagPort : (Decode.Value -> msg) -> Sub msg
 
 -- DOMAIN MODEL (Steel & Stone Edition)
 
@@ -48,6 +49,10 @@ type SyncPhase
     | SyncComparingDates                 -- waiting for local date counts
     | SyncReconcilingDay String          -- waiting for /posts/get?dt=<date>
     | SyncPruningDay String              -- waiting for local hrefs to diff against server
+    -- Phase 5.4: Tag Rename states
+    | SyncRenameQuerying String String          -- oldTag, newTag
+    | SyncRenameProcessing { oldTag : String, newTag : String, index : Int, total : Int }
+    | SyncRenameDeletingTag String
 
 -- A bookmark row from SQLite that is awaiting upstream sync.
 type alias PendingRow =
@@ -95,6 +100,10 @@ type alias Model =
     , serverDates : Dict String Int       -- date -> server count (from /posts/dates)
     , pendingDateReconciles : List String  -- mismatch dates still to process
     , dayServerHrefs : List String         -- server hrefs for the date being reconciled
+    -- Phase 5.4: Tag Rename scratch state
+    , renameOldTag : String
+    , renameNewTag : String
+    , renameQueue : List PendingRow
     }
 
 type alias Flags =
@@ -131,6 +140,9 @@ init flags =
       , serverDates = Dict.empty
       , pendingDateReconciles = []
       , dayServerHrefs = []
+      , renameOldTag = ""
+      , renameNewTag = ""
+      , renameQueue = []
       }
     , if initialQuery /= "" then
         querySearch initialQuery
@@ -244,6 +256,8 @@ type Msg
     | ManualRefresh
     | Tick Time.Posix
     | FlushNext
+    | RenameTagRequest Decode.Value
+    | RenamePushNextMsg
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -378,6 +392,29 @@ update msg model =
 
         FlushNext ->
             flushNext model
+
+        RenameTagRequest value ->
+            case Decode.decodeValue renamePayloadDecoder value of
+                Ok payload ->
+                    let
+                        ( m1, cmd ) =
+                            rpcSqlQuery "rename-query"
+                                "SELECT href, description, extended, tags, time, sync_status FROM bookmarks WHERE (' ' || tags || ' ') LIKE ?"
+                                [ Encode.string ("% " ++ payload.oldTag ++ " %") ]
+                                { model
+                                | renameOldTag = payload.oldTag
+                                , renameNewTag = payload.newTag
+                                , syncPhase = SyncRenameQuerying payload.oldTag payload.newTag
+                                , status = "Renaming tag: querying DB"
+                                }
+                    in
+                    ( m1, cmd )
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+        RenamePushNextMsg ->
+            renamePushNext model
 
 queryAll : Cmd msg
 queryAll =
@@ -539,6 +576,12 @@ routeRpcSuccess rpcId maybePayload model =
                 ( nextModel, nextCmd ) = reconcileNextDay model
             in
             ( nextModel, Cmd.batch [ refreshCmd, nextCmd ] )
+        -- Phase 5.4: Tag Rename chain
+        "rename-query"     -> handleRenameQueryResult maybePayload model
+        "rename-tx"        -> renamePushNext model
+        "rename-push-add"  -> handleRenamePushAddDone model
+        "rename-mark-synced" -> ( model, refreshCmd )
+        "rename-delete-tag"  -> handleRenameDeleteTagDone model
         _                  -> ( model, Cmd.none )
 
 -- ── HEARTBEAT HANDLERS ───────────────────────────────────────────
@@ -851,6 +894,146 @@ handleDayLocalResult maybePayload model =
         in
         ( m1, pruneCmd )
 
+-- ── PHASE 5.4: TAG RENAME WORKAROUND ─────────────────────────────────────────
+
+type alias RenamePayload =
+    { oldTag : String
+    , newTag : String
+    }
+
+renamePayloadDecoder : Decoder RenamePayload
+renamePayloadDecoder =
+    Decode.map2 RenamePayload
+        (Decode.field "oldTag" Decode.string)
+        (Decode.field "newTag" Decode.string)
+
+replaceTag : String -> String -> String -> String
+replaceTag old new tagsStr =
+    tagsStr
+        |> String.split " "
+        |> List.filter (not << String.isEmpty)
+        |> List.map (\t -> if t == old then new else t)
+        |> String.join " "
+
+handleRenameQueryResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleRenameQueryResult maybePayload model =
+    let
+        bookmarks =
+            maybePayload
+                |> Maybe.andThen (\v -> Decode.decodeValue (Decode.list pendingRowDecoder) v |> Result.toMaybe)
+                |> Maybe.withDefault []
+
+        oldTag = model.renameOldTag
+        newTag = model.renameNewTag
+
+        updatedQueue =
+            List.map
+                (\b -> { b | tags = replaceTag oldTag newTag b.tags, syncStatus = "PENDING_UPDATE" })
+                bookmarks
+
+        txStmts =
+            List.map
+                (\b ->
+                    ( "UPDATE bookmarks SET tags = ?, sync_status = 'PENDING_UPDATE', local_last_modified = ? WHERE href = ?"
+                    , [ Encode.string b.tags, Encode.int 1700000000000, Encode.string b.href ]
+                    )
+                )
+                updatedQueue
+
+        m1 =
+            { model
+            | renameQueue = updatedQueue
+            , syncPhase = SyncRenameProcessing { oldTag = oldTag, newTag = newTag, index = 0, total = List.length updatedQueue }
+            , status = "Renaming tag: updating local DB"
+            }
+    in
+    rpcSqlTransaction "rename-tx" txStmts m1
+
+renamePushNext : Model -> ( Model, Cmd Msg )
+renamePushNext model =
+    case model.renameQueue of
+        [] ->
+            let
+                oldTag =
+                    case model.syncPhase of
+                        SyncRenameProcessing r -> r.oldTag
+                        _ -> model.renameOldTag
+            in
+            if oldTag /= "" then
+                rpcFetch "rename-delete-tag"
+                    "/tags/delete"
+                    [ ( "tag", oldTag )
+                    , ( "auth_token", model.token )
+                    , ( "format", "json" )
+                    ]
+                    { model | syncPhase = SyncRenameDeletingTag oldTag, status = "Deleting tag " ++ oldTag ++ " from server..." }
+            else
+                ( { model | syncPhase = SyncIdle, status = "Rename complete." }, Cmd.none )
+
+        first :: _ ->
+            let
+                rState =
+                    case model.syncPhase of
+                        SyncRenameProcessing r -> r
+                        _ -> { oldTag = model.renameOldTag, newTag = model.renameNewTag, index = 0, total = List.length model.renameQueue }
+
+                statusText =
+                    "Renaming tag: pushing bookmark " ++ String.fromInt (rState.index + 1) ++ " of " ++ String.fromInt rState.total
+            in
+            rpcFetch "rename-push-add"
+                "/posts/add"
+                [ ( "url", first.href )
+                , ( "description", first.description )
+                , ( "extended", first.extended )
+                , ( "tags", first.tags )
+                , ( "dt", first.time )
+                , ( "auth_token", model.token )
+                , ( "format", "json" )
+                , ( "replace", "yes" )
+                ]
+                { model | status = statusText }
+
+handleRenamePushAddDone : Model -> ( Model, Cmd Msg )
+handleRenamePushAddDone model =
+    case model.renameQueue of
+        [] ->
+            ( model, Cmd.none )
+
+        first :: rest ->
+            let
+                rState =
+                    case model.syncPhase of
+                        SyncRenameProcessing r -> r
+                        _ -> { oldTag = model.renameOldTag, newTag = model.renameNewTag, index = 0, total = List.length model.renameQueue }
+
+                ( markedModel, markCmd ) =
+                    rpcSqlExec "rename-mark-synced"
+                        "UPDATE bookmarks SET sync_status = 'SYNCHRONIZED' WHERE href = ?"
+                        [ Encode.string first.href ]
+                        { model | renameQueue = rest, syncPhase = SyncRenameProcessing { rState | index = rState.index + 1 } }
+            in
+            ( markedModel
+            , Cmd.batch
+                [ markCmd
+                , Task.perform (\_ -> RenamePushNextMsg) (Process.sleep 100)
+                ]
+            )
+
+handleRenameDeleteTagDone : Model -> ( Model, Cmd Msg )
+handleRenameDeleteTagDone model =
+    let
+        refreshCmd =
+            if model.query == "" then queryAll else querySearch model.query
+    in
+    ( { model
+      | syncPhase = SyncIdle
+      , renameOldTag = ""
+      , renameNewTag = ""
+      , status = "Rename complete."
+      }
+    , refreshCmd
+    )
+
 -- ── RPC BUILDER HELPERS (Phase 5.1) ──────────────────────────────────────────
 -- These encode a well-formed RPC envelope AND mark the request as Pending
 -- in the Model's inFlightRpcs dict. Used by Phase 5.2+ sync orchestration.
@@ -1064,6 +1247,7 @@ subscriptions model =
         , tagSuggestions SetTagSuggestions
         , viewportSize OnResize
         , scrollPosition OnScroll
+        , renameTagPort RenameTagRequest
         , if model.token /= "" && model.isHydrated then
             Time.every (60 * 1000) Tick
           else
