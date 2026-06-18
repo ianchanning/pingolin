@@ -1,14 +1,52 @@
 import sqlite3InitModule from '/vendor/sqlite3-bundler-friendly.mjs';
 
 /**
- * Pinboard PWA - Background Worker (Steel & Stone Edition)
- * Phase 2: Sync Orchestrator & Logic
+ * Pingolin Sync Worker — Lobotomy Edition (Phase 5.0)
+ *
+ * THE DUMB MUSCLE: A pure I/O RPC endpoint.
+ * This file contains ZERO Pinboard domain knowledge.
+ * It executes HTTP requests and SQL statements. Nothing more.
+ * All sync orchestration lives in the Sovereign State Machine (Elm).
+ *
+ * Message Protocol
+ * ─────────────────────────────────────────────────────────────────
+ * INBOUND (from Elm):
+ *   RPC_FETCH          { proxyUrl, path, params? }  → network call
+ *   RPC_SQL_QUERY      { sql, bind? }               → read rows
+ *   RPC_SQL_EXEC       { sql, bind? }               → mutate DB
+ *   RPC_SQL_TRANSACTION  [{ sql, bind? }, ...]      → atomic batch
+ *   START_HYDRATION    { proxyUrl, authToken }       → Big Pull (retained exception)
+ *   INIT               { dbName? }                  → bootstrap DB
+ *
+ * LEGACY INBOUND (retained for Phase 5.1 compatibility, will be removed):
+ *   QUERY_ALL, QUERY_SEARCH, LOCAL_UPSERT, LOCAL_DELETE,
+ *   QUERY, EXEC, GET_POPULAR_TAGS, UPSERT_TAG_ALIAS,
+ *   DEBUG_CLEAR_DB, SET_DEBUG_CAP
+ *
+ * OUTBOUND (to Elm):
+ *   RPC_SUCCESS  { id, payload? }               → generic success response
+ *   RPC_ERROR    { id, payload: { message, code } } → correlated failure
+ *   INIT_SUCCESS { id }
+ *   SESSION_RESTORED { payload: { token, proxyUrl, lastSync } }
+ *   SYNC_PROGRESS    { payload: { status, progress }, id? }
+ *   SYNC_COMPLETE    { payload: { count }, id }
+ *   QUERY_RESULTS    { payload: rows|tags, id }
+ *   REFRESH_REQUIRED {}
+ *   EXEC_SUCCESS     { id }
+ *
+ * RPC_ERROR codes:
+ *   NETWORK_ERROR   fetch threw (proxy unreachable)
+ *   HTTP_<status>   proxy returned non-2xx
+ *   SQL_ERROR       sqlite-wasm threw
+ *   UNKNOWN         catch-all
  */
 
 let db = null;
 let dbPromise = null;
 
-// Helper to send consistent SYNC_PROGRESS messages
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Always posts { status, progress } — no naked status-only payloads. */
 const postSyncProgress = (status, progress = 0, id) => {
   const payload = { status, progress };
   if (id !== undefined) {
@@ -17,6 +55,15 @@ const postSyncProgress = (status, progress = 0, id) => {
     self.postMessage({ type: 'SYNC_PROGRESS', payload });
   }
 };
+
+/** Classifies a thrown error into an RPC error code. */
+const classifyFetchError = (err) => {
+  const httpMatch = err.message.match(/^HTTP (\d+):/);
+  return httpMatch ? `HTTP_${httpMatch[1]}` : 'NETWORK_ERROR';
+};
+
+// ─── Schema ──────────────────────────────────────────────────────────────────
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS bookmarks (
     href TEXT PRIMARY KEY,
@@ -60,6 +107,8 @@ CREATE TRIGGER IF NOT EXISTS bookmarks_au AFTER UPDATE ON bookmarks BEGIN
 END;
 `;
 
+// ─── Database Init ───────────────────────────────────────────────────────────
+
 const initDb = async (dbName = '/pinboard.db') => {
   if (db) return true;
   try {
@@ -77,16 +126,12 @@ const initDb = async (dbName = '/pinboard.db') => {
       console.warn('[Worker] Transient Storage:', dbName);
     }
 
-    db.transaction((db) => {
-      db.exec(SCHEMA);
-    });
-
+    db.transaction((db) => { db.exec(SCHEMA); });
     db.exec('PRAGMA cache_size = 2000;');
     db.exec('PRAGMA synchronous = NORMAL;');
-
     console.log('[Worker] Database Ritual Complete.');
 
-    // Check for existing session
+    // Restore session from metadata
     const meta = db.exec({
       sql: "SELECT key, value FROM metadata WHERE key IN ('last_full_sync_time', 'auth_token', 'proxy_url')",
       returnValue: 'resultRows',
@@ -94,18 +139,16 @@ const initDb = async (dbName = '/pinboard.db') => {
     });
 
     const session = {};
-    for (const row of meta) {
-      session[row.key] = row.value;
-    }
+    for (const row of meta) { session[row.key] = row.value; }
 
     if (session.auth_token) {
-      console.log('[Worker] Session Detected via Auth Token:', session.auth_token);
-      // Self-heal: if last_full_sync_time is missing but we have bookmarks, write it!
+      console.log('[Worker] Session Detected:', session.auth_token);
+      // Self-heal: if last_full_sync_time is missing but bookmarks exist, write it
       if (!session.last_full_sync_time) {
-        const bookmarksCountResult = db.exec({ sql: "SELECT count(*) as count FROM bookmarks", returnValue: "resultRows", rowMode: "object" });
-        const count = bookmarksCountResult.length > 0 ? bookmarksCountResult[0].count : 0;
+        const countResult = db.exec({ sql: 'SELECT count(*) as count FROM bookmarks', returnValue: 'resultRows', rowMode: 'object' });
+        const count = countResult.length > 0 ? countResult[0].count : 0;
         if (count > 0) {
-          console.warn(`[Worker] Zombie Database Detected: ${count} bookmarks but no last_full_sync_time. Healing...`);
+          console.warn(`[Worker] Zombie DB Detected: ${count} bookmarks but no last_full_sync_time. Healing...`);
           const latest = db.exec({ sql: 'SELECT time FROM bookmarks ORDER BY time DESC LIMIT 1', returnValue: 'resultRows', rowMode: 'object' });
           const healTime = latest.length > 0 ? latest[0].time : new Date().toISOString();
           db.exec({
@@ -115,13 +158,13 @@ const initDb = async (dbName = '/pinboard.db') => {
           session.last_full_sync_time = healTime;
         }
       }
-      self.postMessage({ 
-        type: 'SESSION_RESTORED', 
-        payload: { 
+      self.postMessage({
+        type: 'SESSION_RESTORED',
+        payload: {
           lastSync: session.last_full_sync_time || '',
           token: session.auth_token || '',
           proxyUrl: session.proxy_url || ''
-        } 
+        }
       });
     }
 
@@ -132,314 +175,66 @@ const initDb = async (dbName = '/pinboard.db') => {
   }
 };
 
-let syncLoopActive = false;
-let syncLoopTimeout = null;
-let syncInterval = 60000;
-let apiThrottle = 3000;
+// ─── Network ─────────────────────────────────────────────────────────────────
 
+/**
+ * fetchRitual: Generic HTTP fetch to the proxy.
+ * Used by RPC_FETCH and the retained START_HYDRATION handler.
+ * Throws with messages prefixed "HTTP <status>:" for HTTP errors,
+ * or a plain network message for connection failures.
+ */
 const fetchRitual = async (baseUrl, path, params = {}) => {
   if (!baseUrl || baseUrl === '') {
-    console.error(`[Worker] Ritual Void Failure: No Base URL for path ${path}`);
+    throw new Error(`NETWORK_ERROR: No base URL provided for path ${path}`);
+  }
+
+  try { new URL(baseUrl); } catch (_) {
+    throw new Error(`NETWORK_ERROR: Invalid base URL "${baseUrl}" for path ${path}`);
+  }
+
+  const sanitizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  const url = new URL(path.replace(/^\//, ''), sanitizedBase);
+  url.search = new URLSearchParams({ ...params, cb: Date.now() }).toString();
+
+  let response;
+  try {
+    response = await fetch(url.toString());
+  } catch (networkErr) {
+    throw new Error(`NETWORK_ERROR: ${networkErr.message}`);
+  }
+
+  if (!response.ok) {
+    let bodyText = '';
+    try { bodyText = await response.text(); } catch (_) {}
+    console.error(`[Worker] Proxy Error (${response.status}) at ${path}:`, bodyText);
+    throw new Error(`HTTP ${response.status}: ${bodyText.trim() || response.statusText}`);
+  }
+
+  const text = await response.text();
+  if (!text || text.trim() === '') return null;
+
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    if (text.includes('code="done"') || text.includes('result_code":"done"') || text.includes('result_code="done"')) {
+      return { result_code: 'done' };
+    }
+    console.error(`[Worker] Non-JSON response at ${path}:`, text.substring(0, 100));
     return null;
   }
-
-  try {
-    new URL(baseUrl);
-  } catch (err) {
-    console.error(`[Worker] Ritual Void Failure: Base URL is not a valid absolute URL: "${baseUrl}" for path ${path}`);
-    return null;
-  }
-
-  try {
-    const sanitizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-    // Use the 2-arg constructor to safely join relative path to absolute base
-    // Note: path must not have leading slash for proper joining if base has trailing, 
-    // but URL constructor handles '/path' vs 'path' reasonably well if base is absolute.
-    const url = new URL(path.replace(/^\//, ''), sanitizedBase);
-    url.search = new URLSearchParams({ ...params, cb: Date.now() }).toString();
-
-    const response = await fetch(url.toString());
-    if (!response.ok) {
-      let bodyText = '';
-      try {
-        bodyText = await response.text();
-      } catch (_) {}
-      console.error(`[Worker] Detailed Proxy Error (${response.status}) at ${path}:`, bodyText);
-      console.warn(`[Worker] Ritual HTTP Failure (${response.status}) at ${path}`);
-      const errMsg = `HTTP ${response.status}: ${bodyText.trim() || response.statusText}`;
-      self.postMessage({ type: 'ERROR', payload: errMsg });
-      throw new Error(errMsg);
-    }
-
-    const text = await response.text();
-    if (!text || text.trim() === '') return null;
-
-    try {
-      return JSON.parse(text);
-    } catch (err) {
-      if (text.includes('code="done"') || text.includes('result_code":"done"') || text.includes('result_code="done"')) {
-        return { result_code: 'done' };
-      }
-      console.error(`[Worker] Ritual Alchemy Failure (Non-JSON) at ${path}. Content:`, text.substring(0, 100));
-      return null;
-    }
-  } catch (err) {
-    console.error(`[Worker] Ritual Network Failure at ${path}:`, err);
-    self.postMessage({ type: 'ERROR', payload: err.message });
-    throw err;
-  }
 };
 
-const startSyncLoop = (proxyUrl, authToken) => {
-  if (syncLoopActive) {
-    console.log(`[Worker] Heartbeat Already Active. Rescheduling with new interval: ${syncInterval}ms`);
-    if (syncLoopTimeout) {
-      clearTimeout(syncLoopTimeout);
-      syncLoopTimeout = null;
-    }
-  }
-  syncLoopActive = true;
-  console.log(`[Worker] Heartbeat Started (${syncInterval}ms)`);
-
-  const tick = async () => {
-    try {
-      await flushPendingChanges(proxyUrl, authToken);
-      await checkForUpdates(proxyUrl, authToken);
-    } catch (err) {
-      console.error('[Worker] Heartbeat Error:', err);
-    }
-    syncLoopTimeout = setTimeout(tick, syncInterval);
-  };
-
-  tick();
-};
-
-const renameTagWorkaround = async (oldTag, newTag, proxyUrl, authToken, id) => {
-  try {
-    const statusMsg = `Renaming tag: ${oldTag} -> ${newTag}...`;
-    console.log(`[Worker] ${statusMsg}`);
-    postSyncProgress(statusMsg, 0, id);
-
-    const bookmarks = db.exec({
-      sql: "SELECT * FROM bookmarks WHERE (' ' || tags || ' ') LIKE ?",
-      bind: [`% ${oldTag} %`],
-      returnValue: 'resultRows',
-      rowMode: 'object'
-    });
-
-    for (const b of bookmarks) {
-      const tags = b.tags.split(' ').map(t => t === oldTag ? newTag : t).join(' ');
-      db.exec({
-        sql: "UPDATE bookmarks SET tags = ?, sync_status = 'PENDING_UPDATE', local_last_modified = ? WHERE href = ?",
-        bind: [tags, Date.now(), b.href]
-      });
-
-      await addBookmark(proxyUrl, authToken, { ...b, tags });
-      
-      db.exec({
-        sql: "UPDATE bookmarks SET sync_status = 'SYNCHRONIZED' WHERE href = ?",
-        bind: [b.href]
-      });
-
-      await new Promise(resolve => setTimeout(resolve, apiThrottle));
-    }
-
-    const data = await fetchRitual(proxyUrl, '/tags/delete', {
-      auth_token: authToken,
-      format: 'json',
-      tag: oldTag
-    });
-    if (!data) throw new Error('Tag delete failed: No response');
-
-    self.postMessage({ type: 'EXEC_SUCCESS', id });
-    self.postMessage({ type: 'REFRESH_REQUIRED' });
-    refreshPopularTags('popular-tags');
-
-  } catch (err) {
-    console.error('[Worker] Rename Failure:', err);
-    throw err;
-  }
-};
-
-const flushPendingChanges = async (proxyUrl, authToken) => {
-  const pending = db.exec({
-    sql: "SELECT * FROM bookmarks WHERE sync_status != 'SYNCHRONIZED' ORDER BY local_last_modified ASC",
-    returnValue: 'resultRows',
-    rowMode: 'object'
-  });
-
-  if (pending.length === 0) return;
-
-  console.log(`[Worker] Flushing ${pending.length} changes...`);
-
-  let count = 0;
-  for (const b of pending) {
-    try {
-      const statusMsg = b.sync_status === 'PENDING_DELETE'
-        ? `Syncing: deleting bookmark: ${b.href}`
-        : `Syncing: uploading bookmark: ${b.href} (${b.description})`;
-      console.log(`[Worker] ${statusMsg}`);
-      postSyncProgress(statusMsg, count / pending.length);
-
-      if (b.sync_status === 'PENDING_DELETE') {
-        await deleteBookmark(proxyUrl, authToken, b.href);
-      } else {
-        await addBookmark(proxyUrl, authToken, b);
-      }
-
-      db.exec({
-        sql: "UPDATE bookmarks SET sync_status = 'SYNCHRONIZED' WHERE href = ?",
-        bind: [b.href]
-      });
-
-      count++;
-      await new Promise(resolve => setTimeout(resolve, apiThrottle));
-    } catch (err) {
-      console.error(`[Worker] Flush Failure ${b.href}:`, err);
-      break;
-    }
-  }
-  self.postMessage({ type: 'REFRESH_REQUIRED' });
-};
-
-const checkForUpdates = async (proxyUrl, authToken) => {
-  if (!authToken) return;
-  try {
-    const data = await fetchRitual(proxyUrl, '/posts/update', { auth_token: authToken, format: 'json' });
-    if (!data) return;
-
-    const { update_time } = data;
-    
-    const lastSync = db.exec({
-      sql: "SELECT value FROM metadata WHERE key = 'last_sync_time'",
-      returnValue: 'resultRows',
-      rowMode: 'object'
-    });
-
-    let lastSyncTime = lastSync.length > 0 ? lastSync[0].value : null;
-
-    if (!lastSyncTime) {
-      const latest = db.exec({ sql: 'SELECT time FROM bookmarks ORDER BY time DESC LIMIT 1', returnValue: 'resultRows', rowMode: 'object' });
-      if (latest.length > 0) {
-        lastSyncTime = latest[0].time;
-        db.exec({ sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", bind: [lastSyncTime] });
-      }
-    }
-
-    if (update_time !== lastSyncTime) {
-      await performDeltaSync(proxyUrl, authToken, lastSyncTime, update_time);
-    }
-    await performDatesHack(proxyUrl, authToken);
-    postSyncProgress('Archive is current.', 1.0);
-  } catch (err) {
-    console.error('[Worker] Update Check Failure:', err);
-    throw err;
-  }
-};
-
-const performDeltaSync = async (proxyUrl, authToken, fromDt, serverTime) => {
-  console.log('[Worker] Delta Sync starting from:', fromDt);
-  const bookmarks = await fetchRitual(proxyUrl, '/posts/all', { auth_token: authToken, format: 'json', fromdt: fromDt || '' });
-  
-  if (bookmarks && bookmarks.length > 0) {
-    console.log(`[Worker] Delta Sync received ${bookmarks.length} bookmarks`);
-    db.transaction((db) => {
-      const stmt = db.prepare("INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, local_last_modified=excluded.local_last_modified WHERE sync_status = 'SYNCHRONIZED'");
-      for (const b of bookmarks) {
-        stmt.bind([b.href, b.description, b.extended || '', b.tags, b.time, Date.now()]);
-        stmt.step();
-        stmt.reset();
-      }
-      stmt.finalize();
-    });
-    self.postMessage({ type: 'REFRESH_REQUIRED' });
-    refreshPopularTags('popular-tags');
-  }
-
-  db.exec({ sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", bind: [serverTime] });
-  postSyncProgress('Delta complete.', 0);
-};
-
-const performDatesHack = async (proxyUrl, authToken) => {
-  const data = await fetchRitual(proxyUrl, '/posts/dates', { auth_token: authToken, format: 'json' });
-  if (!data) return;
-
-  const serverDates = data.dates || {};
-  const localDates = db.exec({ sql: "SELECT strftime('%Y-%m-%d', time) as date_str, COUNT(*) as qty FROM bookmarks GROUP BY date_str", returnValue: 'resultRows', rowMode: 'object' });
-
-  for (const row of localDates) {
-    const serverCount = parseInt(serverDates[row.date_str] || '0');
-    if (row.qty > serverCount) {
-      console.log(`[Worker] Dates Mismatch for ${row.date_str}: local=${row.qty}, server=${serverCount}`);
-      await reconcileDate(proxyUrl, authToken, row.date_str);
-    }
-  }
-};
-
-const reconcileDate = async (proxyUrl, authToken, date) => {
-  console.log('[Worker] Reconciling date:', date);
-  const data = await fetchRitual(proxyUrl, '/posts/get', { auth_token: authToken, format: 'json', dt: date });
-  if (!data) return;
-
-  const serverBookmarks = data.posts || (Array.isArray(data) ? data : []);
-  const serverHrefs = new Set(serverBookmarks.map((b) => b.href));
-  let deletedCount = 0;
-
-  db.transaction((db) => {
-    const localRecords = db.exec({ sql: "SELECT href FROM bookmarks WHERE strftime('%Y-%m-%d', time) = ? AND sync_status = 'SYNCHRONIZED'", bind: [date], returnValue: 'resultRows', rowMode: 'object' });
-    const deleteStmt = db.prepare('DELETE FROM bookmarks WHERE href = ?');
-    for (const row of localRecords) {
-      if (!serverHrefs.has(row.href)) {
-        console.log('[Worker] Pruning ghost bookmark:', row.href);
-        deleteStmt.bind([row.href]);
-        deleteStmt.step();
-        deleteStmt.reset();
-        deletedCount++;
-      }
-    }
-    deleteStmt.finalize();
-  });
-
-  if (deletedCount > 0) {
-    self.postMessage({ type: 'REFRESH_REQUIRED' });
-    refreshPopularTags('popular-tags');
-  }
-};
-
-const addBookmark = async (proxyUrl, authToken, b) => {
-  const data = await fetchRitual(proxyUrl, '/posts/add', { 
-    auth_token: authToken, 
-    format: 'json', 
-    url: b.href, 
-    description: b.description, 
-    extended: b.extended || '', 
-    tags: b.tags, 
-    dt: b.time, 
-    replace: 'yes' 
-  });
-  if (!data) throw new Error('Ritual Add Failure: No response');
-};
-
-const deleteBookmark = async (proxyUrl, authToken, href) => {
-  const data = await fetchRitual(proxyUrl, '/posts/delete', { 
-    auth_token: authToken, 
-    format: 'json', 
-    url: href 
-  });
-  if (!data) throw new Error('Ritual Delete Failure: No response');
-};
+// ─── Tag Utilities ───────────────────────────────────────────────────────────
 
 const refreshPopularTags = (id) => {
   const tagRows = db.exec({ sql: 'SELECT tags FROM bookmarks', returnValue: 'resultRows', rowMode: 'object' });
   const aliasRows = db.exec({ sql: 'SELECT mapped_tag FROM tag_aliases', returnValue: 'resultRows', rowMode: 'object' });
-  
+
   const counts = {};
   for (const row of tagRows) {
     const tList = (row.tags || '').split(' ').filter(Boolean);
     for (const t of tList) counts[t] = (counts[t] || 0) + 1;
   }
-  
-  // Add aliases with high priority (virtual count)
   for (const row of aliasRows) {
     counts[row.mapped_tag] = (counts[row.mapped_tag] || 0) + 1000;
   }
@@ -448,9 +243,65 @@ const refreshPopularTags = (id) => {
   self.postMessage({ type: 'QUERY_RESULTS', payload: sortedTags, id });
 };
 
+// ─── Big Pull Exception ───────────────────────────────────────────────────────
+
+/**
+ * hydrateArchive: The SOLE retained procedural exception.
+ *
+ * Transferring a 15MB JSON array across the postMessage boundary to the
+ * Sovereign State Machine would freeze the UI thread and violate the 60fps
+ * mandate. This function therefore retains its procedural form inside the worker.
+ *
+ * It remains a sealed black box: it knows the Pinboard /posts/all endpoint
+ * only in this single location. All other Pinboard knowledge has been removed.
+ */
+const hydrateArchive = async (proxyUrl, authToken, id) => {
+  postSyncProgress('NETWORK: Summing archive...', 0.1, id);
+  const bookmarks = await fetchRitual(proxyUrl, '/posts/all', { auth_token: authToken, format: 'json' });
+  if (!bookmarks) throw new Error('Server returned empty archive');
+
+  const CHUNK_SIZE = 1000;
+  for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
+    const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
+    db.transaction((db) => {
+      const stmt = db.prepare("INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, local_last_modified=excluded.local_last_modified");
+      for (const b of chunk) {
+        stmt.bind([b.href, b.description, b.extended || '', b.tags, b.time, Date.now()]);
+        stmt.step();
+        stmt.reset();
+      }
+      stmt.finalize();
+    });
+    postSyncProgress(
+      `LOCAL: Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`,
+      0.3 + (0.6 * (i + CHUNK_SIZE) / bookmarks.length),
+      id
+    );
+    await new Promise(r => setTimeout(r, 0));
+  }
+
+  db.exec({
+    sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?), ('last_full_sync_time', ?), ('auth_token', ?), ('proxy_url', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    bind: [new Date().toISOString(), new Date().toISOString(), authToken, proxyUrl]
+  });
+  self.postMessage({ type: 'SYNC_COMPLETE', payload: { count: bookmarks.length }, id });
+  self.postMessage({ type: 'REFRESH_REQUIRED' });
+  refreshPopularTags('popular-tags');
+};
+
+// ─── Main Dispatcher ─────────────────────────────────────────────────────────
+
 self.onmessage = async (e) => {
   const { type, payload, id } = e.data;
+
+  /** Post a correlated RPC_ERROR. Always includes the originating id. */
+  const postRpcError = (message, code = 'UNKNOWN') => {
+    console.error(`[Worker] RPC_ERROR (${code}) id=${id}:`, message);
+    self.postMessage({ type: 'RPC_ERROR', id, payload: { message, code } });
+  };
+
   try {
+    // ── INIT (runs before DB is ready) ──────────────────────────────────────
     if (type === 'INIT') {
       if (!dbPromise) dbPromise = initDb(payload?.dbName);
       await dbPromise;
@@ -458,36 +309,112 @@ self.onmessage = async (e) => {
       return;
     }
 
+    // Ensure DB is ready for all other messages
     if (!db && dbPromise) await dbPromise;
-    if (!db) {
-      dbPromise = initDb();
-      await dbPromise;
-    }
+    if (!db) { dbPromise = initDb(); await dbPromise; }
 
     switch (type) {
+
+      // ══════════════════════════════════════════════════════════════════════
+      // PHASE 5.0: GENERIC RPC HANDLERS
+      // The Sovereign State Machine issues these commands.
+      // The Dumb Muscle executes them. Nothing more.
+      // ══════════════════════════════════════════════════════════════════════
+
+      case 'RPC_FETCH': {
+        const { proxyUrl, path, params = {} } = payload;
+        try {
+          const data = await fetchRitual(proxyUrl, path, params);
+          self.postMessage({ type: 'RPC_SUCCESS', id, payload: data });
+        } catch (err) {
+          postRpcError(err.message, classifyFetchError(err));
+        }
+        break;
+      }
+
+      case 'RPC_SQL_QUERY': {
+        const { sql, bind } = payload;
+        try {
+          const rows = db.exec({ sql, bind, returnValue: 'resultRows', rowMode: 'object' });
+          self.postMessage({ type: 'RPC_SUCCESS', id, payload: rows });
+        } catch (err) {
+          postRpcError(err.message, 'SQL_ERROR');
+        }
+        break;
+      }
+
+      case 'RPC_SQL_EXEC': {
+        const { sql, bind } = payload;
+        try {
+          db.exec({ sql, bind });
+          self.postMessage({ type: 'RPC_SUCCESS', id });
+        } catch (err) {
+          postRpcError(err.message, 'SQL_ERROR');
+        }
+        break;
+      }
+
+      case 'RPC_SQL_TRANSACTION': {
+        // payload: Array<{ sql: string, bind?: any[] }>
+        try {
+          db.transaction((db) => {
+            for (const stmt of payload) {
+              db.exec({ sql: stmt.sql, bind: stmt.bind });
+            }
+          });
+          self.postMessage({ type: 'RPC_SUCCESS', id });
+        } catch (err) {
+          postRpcError(err.message, 'SQL_ERROR');
+        }
+        break;
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // BIG PULL EXCEPTION
+      // Retained by architectural necessity: 15MB → postMessage = UI freeze.
+      // This is the ONLY location in the worker that knows a Pinboard endpoint.
+      // ══════════════════════════════════════════════════════════════════════
+
+      case 'START_HYDRATION':
+        try {
+          await hydrateArchive(payload.proxyUrl, payload.authToken, id);
+        } catch (err) {
+          postRpcError(err.message, classifyFetchError(err));
+        }
+        break;
+
+      // ══════════════════════════════════════════════════════════════════════
+      // LEGACY HANDLERS — retained for Phase 5.1 Elm port compatibility.
+      // These will be removed once the Elm layer issues RPC_SQL_* commands.
+      // ══════════════════════════════════════════════════════════════════════
+
       case 'QUERY_SEARCH': {
         if (!payload || payload.trim() === '') {
           const all = db.exec({ sql: 'SELECT * FROM bookmarks ORDER BY time DESC', returnValue: 'resultRows', rowMode: 'object' });
           self.postMessage({ type: 'QUERY_RESULTS', payload: all, id });
           break;
         }
-
         const aliasRows = db.exec({ sql: 'SELECT mapped_tag FROM tag_aliases WHERE keyword = ?', bind: [payload.toLowerCase()], returnValue: 'resultRows', rowMode: 'object' });
         const effectiveQuery = aliasRows.length > 0 ? aliasRows[0].mapped_tag : payload;
-        let sql = effectiveQuery.startsWith('#') 
-          ? "SELECT * FROM bookmarks WHERE (' ' || tags || ' ') LIKE ? ORDER BY time DESC" 
+        const sql = effectiveQuery.startsWith('#')
+          ? "SELECT * FROM bookmarks WHERE (' ' || tags || ' ') LIKE ? ORDER BY time DESC"
           : "SELECT b.* FROM bookmarks b JOIN bookmarks_fts f ON b.rowid = f.rowid WHERE bookmarks_fts MATCH ? ORDER BY b.time DESC";
-        const bind = effectiveQuery.startsWith('#') ? [`% ${effectiveQuery.substring(1)} %`] : [`"${effectiveQuery.replace(/"/g, '""')}"`];
+        const bind = effectiveQuery.startsWith('#')
+          ? [`% ${effectiveQuery.substring(1)} %`]
+          : [`"${effectiveQuery.replace(/"/g, '""')}"`];
         const results = db.exec({ sql, bind, returnValue: 'resultRows', rowMode: 'object' });
         self.postMessage({ type: 'QUERY_RESULTS', payload: results, id });
         break;
       }
-      case 'QUERY_ALL':
+
+      case 'QUERY_ALL': {
         const all = db.exec({ sql: 'SELECT * FROM bookmarks ORDER BY time DESC', returnValue: 'resultRows', rowMode: 'object' });
         console.log('[Worker] QUERY_ALL results count:', all.length, all.length > 0 ? all[0].href : 'NONE');
         self.postMessage({ type: 'QUERY_RESULTS', payload: all, id });
         break;
-      case 'LOCAL_UPSERT':
+      }
+
+      case 'LOCAL_UPSERT': {
         console.log('[Worker] LOCAL_UPSERT:', payload.href, payload.description);
         db.transaction((db) => {
           const now = Date.now();
@@ -503,59 +430,44 @@ self.onmessage = async (e) => {
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         refreshPopularTags('popular-tags');
         break;
+      }
+
       case 'LOCAL_DELETE':
         db.exec({ sql: "UPDATE bookmarks SET sync_status = 'PENDING_DELETE', local_last_modified = ? WHERE href = ?", bind: [Date.now(), payload] });
         self.postMessage({ type: 'REFRESH_REQUIRED' });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
-      case 'QUERY':
-        const results = db.exec({ sql: payload.sql, bind: payload.bind, returnValue: 'resultRows', rowMode: 'object' });
-        self.postMessage({ type: 'QUERY_RESULTS', payload: results, id });
+
+      case 'QUERY': {
+        const rows = db.exec({ sql: payload.sql, bind: payload.bind, returnValue: 'resultRows', rowMode: 'object' });
+        self.postMessage({ type: 'QUERY_RESULTS', payload: rows, id });
         break;
+      }
+
       case 'EXEC':
         db.exec({ sql: payload.sql, bind: payload.bind });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
+
       case 'GET_POPULAR_TAGS':
         refreshPopularTags(id);
         break;
+
       case 'UPSERT_TAG_ALIAS':
         db.exec({ sql: 'INSERT INTO tag_aliases (keyword, mapped_tag) VALUES (?, ?) ON CONFLICT(keyword) DO UPDATE SET mapped_tag=excluded.mapped_tag', bind: [payload.keyword, payload.mapped_tag] });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         refreshPopularTags('popular-tags');
         break;
-      case 'RENAME_TAG':
-        await renameTagWorkaround(payload.oldTag, payload.newTag, payload.proxyUrl, payload.authToken, id);
-        self.postMessage({ type: 'REFRESH_REQUIRED' });
-        break;
-      case 'START_HYDRATION':
-        await hydrateArchive(payload.proxyUrl, payload.authToken, id);
-        break;
-      case 'START_SYNC_LOOP':
-        db.exec({
-          sql: "INSERT INTO metadata (key, value) VALUES ('auth_token', ?), ('proxy_url', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-          bind: [payload.authToken, payload.proxyUrl]
-        });
-        startSyncLoop(payload.proxyUrl, payload.authToken);
-        self.postMessage({ type: 'EXEC_SUCCESS', id });
-        break;
-      case 'SET_SYNC_INTERVAL':
-        syncInterval = payload;
-        self.postMessage({ type: 'EXEC_SUCCESS', id });
-        break;
-      case 'SET_THROTTLE':
-        apiThrottle = payload;
-        self.postMessage({ type: 'EXEC_SUCCESS', id });
-        break;
-      case 'CHECK_FOR_UPDATES':
-        await flushPendingChanges(payload.proxyUrl, payload.authToken);
-        await checkForUpdates(payload.proxyUrl, payload.authToken);
-        self.postMessage({ type: 'EXEC_SUCCESS', id });
-        break;
+
+      // ══════════════════════════════════════════════════════════════════════
+      // DEBUG UTILITIES
+      // ══════════════════════════════════════════════════════════════════════
+
       case 'SET_DEBUG_CAP':
-        // Just acknowledging for test compatibility
+        // Acknowledged for test compatibility.
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
+
       case 'DEBUG_CLEAR_DB':
         db.transaction((db) => {
           db.exec('DROP TABLE IF EXISTS bookmarks; DROP TABLE IF EXISTS bookmarks_fts; DROP TABLE IF EXISTS tag_aliases; DROP TABLE IF EXISTS metadata;');
@@ -563,40 +475,14 @@ self.onmessage = async (e) => {
         });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
+
       default:
-        console.warn('[Worker] Unknown message:', type);
+        console.warn('[Worker] Unknown or removed message type:', type);
     }
   } catch (error) {
-    self.postMessage({ type: 'ERROR', payload: error.message, id });
+    // Global safety net: no unhandled rejection escapes.
+    // Always emit RPC_ERROR with the originating id.
+    console.error('[Worker] Unhandled exception for message type:', type, error);
+    self.postMessage({ type: 'RPC_ERROR', id, payload: { message: error.message, code: 'UNKNOWN' } });
   }
-};
-
-const hydrateArchive = async (proxyUrl, authToken, id) => {
-  postSyncProgress('NETWORK: Summing archive...', 0.1, id);
-  const bookmarks = await fetchRitual(proxyUrl, '/posts/all', { auth_token: authToken, format: 'json' });
-  if (!bookmarks) throw new Error('Server Ritual Error: Empty or Invalid Archive');
-  
-  const CHUNK_SIZE = 1000;
-  for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
-    const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
-    db.transaction((db) => {
-      const stmt = db.prepare("INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, local_last_modified=excluded.local_last_modified");
-      for (const b of chunk) {
-        stmt.bind([b.href, b.description, b.extended || '', b.tags, b.time, Date.now()]);
-        stmt.step();
-        stmt.reset();
-      }
-      stmt.finalize();
-    });
-    postSyncProgress(`LOCAL: Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`, 0.3 + (0.6 * (i + CHUNK_SIZE) / bookmarks.length), id);
-    await new Promise(r => setTimeout(r, 0));
-  }
-
-  db.exec({ 
-    sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?), ('last_full_sync_time', ?), ('auth_token', ?), ('proxy_url', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", 
-    bind: [new Date().toISOString(), new Date().toISOString(), authToken, proxyUrl] 
-  });
-  self.postMessage({ type: 'SYNC_COMPLETE', payload: { count: bookmarks.length }, id });
-  self.postMessage({ type: 'REFRESH_REQUIRED' });
-  refreshPopularTags('popular-tags');
 };
