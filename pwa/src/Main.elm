@@ -4,6 +4,7 @@ import Browser
 import Html exposing (Html, div, text, button, input, h1, img, h3, a, span)
 import Html.Attributes exposing (placeholder, value, type_, class, style, attribute, src, href, target)
 import Html.Events exposing (onClick, onInput, preventDefaultOn)
+import Dict exposing (Dict)
 import Json.Encode as Encode
 import Json.Decode as Decode exposing (Decoder)
 
@@ -34,6 +35,13 @@ type alias Bookmark =
     , syncStatus : SyncStatus
     }
 
+-- RPC request lifecycle state.
+-- Each in-flight request is tracked by its id in the Model.
+type RpcState
+    = RpcPending
+    | RpcSuccess (Maybe Decode.Value)
+    | RpcFailed { message : String, code : String }
+
 type alias Model =
     { token : String
     , proxyUrl : String
@@ -54,6 +62,7 @@ type alias Model =
         }
     , showLoginForm : Bool
     , version : String
+    , inFlightRpcs : Dict String RpcState
     }
 
 type alias Flags =
@@ -83,6 +92,7 @@ init flags =
       , newBookmark = { href = "", description = "", tags = "" }
       , showLoginForm = not flags.isHydrated
       , version = flags.version
+      , inFlightRpcs = Dict.empty
       }
     , if initialQuery /= "" then
         querySearch initialQuery
@@ -147,6 +157,17 @@ workerMessageDecoder =
                                 (Decode.oneOf [ Decode.field "proxyUrl" Decode.string, Decode.succeed "" ])
                             )
 
+                    "RPC_SUCCESS" ->
+                        Decode.map2 RpcSuccessMsg
+                            (Decode.succeed id)
+                            (Decode.maybe (Decode.field "payload" Decode.value))
+
+                    "RPC_ERROR" ->
+                        Decode.map3 RpcErrorMsg
+                            (Decode.succeed id)
+                            (Decode.at [ "payload", "message" ] Decode.string)
+                            (Decode.at [ "payload", "code" ] (Decode.oneOf [ Decode.string, Decode.succeed "UNKNOWN" ]))
+
                     _ ->
                         Decode.succeed UnknownMsg
             )
@@ -159,6 +180,8 @@ type WorkerMsg
     | ErrorMsg String
     | RefreshRequiredMsg
     | SessionRestoredMsg String String
+    | RpcSuccessMsg String (Maybe Decode.Value)  -- id, optional payload
+    | RpcErrorMsg String String String            -- id, message, code
     | UnknownMsg
 
 -- UPDATE (Pure Logic / Side-Effect Management)
@@ -274,19 +297,9 @@ update msg model =
             ( { model | viewportHeight = height }, Cmd.none )
 
         ManualRefresh ->
-            ( { model | status = "Syncing..." }
-            , toWorker <|
-                Encode.object
-                    [ ( "type", Encode.string "CHECK_FOR_UPDATES" )
-                    , ( "payload"
-                      , Encode.object
-                            [ ( "proxyUrl", Encode.string model.proxyUrl )
-                            , ( "authToken", Encode.string model.token )
-                            ]
-                      )
-                    , ( "id", Encode.string "manual-sync" )
-                    ]
-            )
+            -- Phase 5.2: Full delta-sync will be re-implemented here via RPC_FETCH.
+            -- For now, re-query local DB to refresh the UI.
+            ( { model | status = "Refreshing..." }, queryAll )
 
 queryAll : Cmd msg
 queryAll =
@@ -312,8 +325,10 @@ handleWorkerMsg msg model =
             ( { model | status = status, progress = progress }, Cmd.none )
 
         SyncCompleteMsg ->
+            -- Phase 5.2: Elm heartbeat (Time.every) will replace the old JS timer.
+            -- For now, queryAll is sufficient; auto-sync resumes in Phase 5.2.
             ( { model | status = "Archive Restored. Finalizing...", progress = 1.0, isHydrated = True, showLoginForm = False }
-            , Cmd.batch [ queryAll, startSyncLoop model.proxyUrl model.token ]
+            , queryAll
             )
 
         QueryResultsMsg bookmarks ->
@@ -366,34 +381,135 @@ handleWorkerMsg msg model =
                     else
                         querySearch model.query
 
+                -- Phase 5.2: Elm heartbeat (Time.every) will replace the old JS timer.
+                -- Auto-sync will resume once the Sovereign heartbeat is wired in.
                 cmd =
-                    if effectiveToken /= "" && effectiveProxy /= "" then
-                        Cmd.batch [ queryCmd, startSyncLoop effectiveProxy effectiveToken ]
-
-                    else
-                        queryCmd
+                    queryCmd
             in
             ( { model | isHydrated = True, status = "Session Restored.", token = effectiveToken, proxyUrl = effectiveProxy, showLoginForm = False }
             , cmd
+            )
+
+        RpcSuccessMsg rpcId payload ->
+            ( { model | inFlightRpcs = Dict.insert rpcId (RpcSuccess payload) model.inFlightRpcs }
+            , Cmd.none
+            )
+
+        RpcErrorMsg rpcId message code ->
+            ( { model
+              | inFlightRpcs = Dict.insert rpcId (RpcFailed { message = message, code = code }) model.inFlightRpcs
+              , status = "Error (" ++ code ++ "): " ++ message
+              }
+            , Cmd.none
             )
 
         UnknownMsg ->
             ( model, Cmd.none )
 
 
-startSyncLoop : String -> String -> Cmd msg
-startSyncLoop proxyUrl token =
-    toWorker <|
-        Encode.object
-            [ ( "type", Encode.string "START_SYNC_LOOP" )
-            , ( "payload"
-              , Encode.object
-                    [ ( "proxyUrl", Encode.string proxyUrl )
-                    , ( "authToken", Encode.string token )
-                    ]
-              )
-            , ( "id", Encode.string "sync-loop" )
-            ]
+-- startSyncLoop removed in Phase 5.0.
+-- The JS heartbeat (setInterval) has been deleted from the worker.
+-- Phase 5.2 will introduce an Elm-native Time.every subscription instead.
+
+-- ── RPC BUILDER HELPERS (Phase 5.1) ──────────────────────────────────────────
+-- These encode a well-formed RPC envelope AND mark the request as Pending
+-- in the Model's inFlightRpcs dict. Used by Phase 5.2+ sync orchestration.
+
+{-| Send an RPC_FETCH command and track it as Pending. -}
+rpcFetch : String -> String -> List ( String, String ) -> Model -> ( Model, Cmd Msg )
+rpcFetch rpcId path params model =
+    let
+        envelope =
+            Encode.object
+                [ ( "type", Encode.string "RPC_FETCH" )
+                , ( "id", Encode.string rpcId )
+                , ( "payload"
+                  , Encode.object
+                      (( "proxyUrl", Encode.string model.proxyUrl )
+                      :: ( "path", Encode.string path )
+                      :: List.map (\( k, v ) -> ( k, Encode.string v )) params
+                      )
+                  )
+                ]
+    in
+    ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
+    , toWorker envelope
+    )
+
+{-| Send an RPC_SQL_QUERY command and track it as Pending. -}
+rpcSqlQuery : String -> String -> List Encode.Value -> Model -> ( Model, Cmd Msg )
+rpcSqlQuery rpcId sql bind model =
+    let
+        envelope =
+            Encode.object
+                [ ( "type", Encode.string "RPC_SQL_QUERY" )
+                , ( "id", Encode.string rpcId )
+                , ( "payload"
+                  , Encode.object
+                      [ ( "sql", Encode.string sql )
+                      , ( "bind", Encode.list identity bind )
+                      ]
+                  )
+                ]
+    in
+    ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
+    , toWorker envelope
+    )
+
+{-| Send an RPC_SQL_EXEC command and track it as Pending. -}
+rpcSqlExec : String -> String -> List Encode.Value -> Model -> ( Model, Cmd Msg )
+rpcSqlExec rpcId sql bind model =
+    let
+        envelope =
+            Encode.object
+                [ ( "type", Encode.string "RPC_SQL_EXEC" )
+                , ( "id", Encode.string rpcId )
+                , ( "payload"
+                  , Encode.object
+                      [ ( "sql", Encode.string sql )
+                      , ( "bind", Encode.list identity bind )
+                      ]
+                  )
+                ]
+    in
+    ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
+    , toWorker envelope
+    )
+
+{-| Send an RPC_SQL_TRANSACTION command and track it as Pending.
+    stmts is a list of (sql, bind) pairs.
+-}
+rpcSqlTransaction : String -> List ( String, List Encode.Value ) -> Model -> ( Model, Cmd Msg )
+rpcSqlTransaction rpcId stmts model =
+    let
+        encodeStmt ( sql, bind ) =
+            Encode.object
+                [ ( "sql", Encode.string sql )
+                , ( "bind", Encode.list identity bind )
+                ]
+
+        envelope =
+            Encode.object
+                [ ( "type", Encode.string "RPC_SQL_TRANSACTION" )
+                , ( "id", Encode.string rpcId )
+                , ( "payload", Encode.list encodeStmt stmts )
+                ]
+    in
+    ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
+    , toWorker envelope
+    )
+
+{-| Look up the result of a completed RPC in the model.
+    Returns Nothing if the request is still Pending or was never sent.
+-}
+rpcResult : String -> Model -> Maybe RpcState
+rpcResult rpcId model =
+    Dict.get rpcId model.inFlightRpcs
+
+{-| Discard a completed RPC entry from the tracking dict (cleanup after use). -}
+rpcClear : String -> Model -> Model
+rpcClear rpcId model =
+    { model | inFlightRpcs = Dict.remove rpcId model.inFlightRpcs }
 
 -- VIEW (Brutally Simple)
 

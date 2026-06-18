@@ -3,21 +3,21 @@
 ## Overview
 To achieve true 30-year `0M` (Zero Maintenance) reliability, we must extract all business logic, API knowledge, and state management from the volatile `sync-worker.js`. The Worker becomes a "Dumb Muscle" RPC interface (pure I/O), controlled by a Sovereign State Machine (currently implemented in Elm, but architecturally interchangeable).
 
-## Phase 5.0: Forging the RPC Spinal Cord (Worker Side)
+## Phase 5.0: Forging the RPC Spinal Cord (Worker Side) ✅
 **Goal:** Strip `sync-worker.js` of Pinboard domain logic and expose raw, strictly typed I/O capabilities.
-- [ ] **Establish RPC Handlers:** Replace domain-specific messages (`CHECK_FOR_UPDATES`, `RENAME_TAG`) with generic execution channels:
-  - `RPC_FETCH`: Payload `{ path, params, method }`. Worker hits the proxy, returns raw text/JSON.
+- [x] **Establish RPC Handlers:** Replace domain-specific messages (`CHECK_FOR_UPDATES`, `RENAME_TAG`) with generic execution channels:
+  - `RPC_FETCH`: Payload `{ proxyUrl, path, params }`. Worker hits the proxy, returns raw text/JSON.
   - `RPC_SQL_QUERY`: Payload `{ sql, bind }`. Worker reads DB, returns row arrays.
   - `RPC_SQL_EXEC`: Payload `{ sql, bind }`. Worker mutates DB, returns success/fail.
   - `RPC_SQL_TRANSACTION`: Payload `[{ sql, bind }, ...]`. Executes batch mutations atomically.
-- [ ] **Retain the "Big Pull" Blackbox:** Keep `START_HYDRATION` intact inside the worker. (Transferring 15MB of raw JSON across the Worker boundary to the UI thread violates the 60fps performance mandate. This remains the sole procedural exception).
-- [ ] **Kill the Heartbeat:** Delete all `setInterval` and `setTimeout` calls from the worker. It no longer controls time.
+- [x] **Retain the "Big Pull" Blackbox:** Keep `START_HYDRATION` intact inside the worker.
+- [x] **Kill the Heartbeat:** Deleted all `setInterval` and `setTimeout` calls from the worker.
 
-## Phase 5.1: The Cartridge Slot (Adapter Boundary)
+## Phase 5.1: The Cartridge Slot (Adapter Boundary) ✅
 **Goal:** Prepare the Sovereign UI layer (Elm) to act as the General, issuing commands and interpreting raw I/O results.
-- [ ] **Update Adapter Types:** Redefine outgoing/incoming ports to handle the universal RPC envelope: `{ type, id, payload }`.
-- [ ] **Implement Request Tracking:** The State Machine must track in-flight RPC requests (e.g., maintaining a `Dict String RpcState` mapping request IDs to expected response types) to avoid asynchronous interleaving.
-- [ ] **Strict Deserialization:** The UI layer must implement aggressive, pure-function parsing schemas (e.g., Elm Decoders) to validate the raw `RPC_FETCH` JSON returns before allowing them into the application state.
+- [x] **Update Adapter Types:** `RpcState` type added (`RpcPending | RpcSuccess | RpcFailed`). `WorkerMsg` updated: `RpcSuccessMsg String (Maybe Value)` and `RpcErrorMsg String String String` (id-correlated).
+- [x] **Implement Request Tracking:** `inFlightRpcs : Dict String RpcState` added to Model and initialised to `Dict.empty`. All RPC builder helpers (`rpcFetch`, `rpcSqlQuery`, `rpcSqlExec`, `rpcSqlTransaction`) atomically insert `RpcPending` and dispatch `toWorker`.
+- [x] **Strict Deserialization:** `workerMessageDecoder` now decodes `RPC_SUCCESS` payload as opaque `Decode.Value` (preserved for Phase 5.2+ routing). `RPC_ERROR` now carries `id`, `message`, and `code`.
 
 ## Phase 5.2: Sovereign Time & The Flush Queue
 **Goal:** The State Machine assumes absolute control over the passage of time and network mutation pacing.

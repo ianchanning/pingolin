@@ -3,36 +3,43 @@ import { mockDb, mockStmt, mockSqlite3 } from './__mocks__/sqlite-mock.js';
 
 // ============================================================================
 // THE QUANTUM CONTAINMENT FIELD (MOCKS)
+// Must be set up BEFORE importing the worker (ES module evaluation is immediate)
 // ============================================================================
 
-// 1. Mock the Global Web Worker Context
 const mockPostMessage = vi.fn();
-global.self = { 
+global.self = {
   postMessage: mockPostMessage,
-  onmessage: null // The worker will attach its listener here
+  onmessage: null,
 };
-
-// 2. Mock the Network (The Proxy Bridge)
 global.fetch = vi.fn();
 
-// ============================================================================
-// IMPORTING THE BEAST
-// ============================================================================
-// A dynamic await import defeats ES Module hoisting. 
-// It guarantees the worker only wakes up AFTER our globals are fully defined.
+// Dynamic import defeats ES Module hoisting — worker wakes up AFTER globals exist.
 await import('../public/sync-worker.js');
 
 // ============================================================================
-// THE TRIALS (TEST SUITE)
+// SHARED TEST HELPERS
 // ============================================================================
 
-describe('Pingolin Worker: The Steel & Stone Tests', () => {
+/** Send a message to the worker and wait for its async handler to complete. */
+const sendToWorker = async (type, payload, id = 'test-id') => {
+  await global.self.onmessage({ data: { type, payload, id } });
+};
+
+/** Return all calls to postMessage matching a given type. */
+const messagesOfType = (type) =>
+  mockPostMessage.mock.calls.map(([msg]) => msg).filter((msg) => msg.type === type);
+
+// ============================================================================
+// THE TRIALS — Phase 5.0 RPC Contract
+// ============================================================================
+
+describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers(); // Control time for the throttles!
-    
-    // Default DB mock behavior: pretend it's an empty DB setup
-    mockDb.exec.mockImplementation(({ sql }) => {
+    vi.useFakeTimers();
+
+    // Default: empty DB (no existing session)
+    mockDb.exec.mockImplementation(({ sql } = {}) => {
       if (sql && sql.includes('SELECT key, value FROM metadata')) return [];
       return [];
     });
@@ -42,123 +49,246 @@ describe('Pingolin Worker: The Steel & Stone Tests', () => {
     vi.useRealTimers();
   });
 
-  // --- Helper to trigger the worker ---
-  const sendToWorker = async (type, payload, id = 'test-id') => {
-    await global.self.onmessage({ data: { type, payload, id } });
-  };
+  // ── INIT ─────────────────────────────────────────────────────────────────
 
-  it('1. THE AWAKENING: Should initialize the DB and report success', async () => {
+  it('INIT: initialises the DB and reports INIT_SUCCESS', async () => {
     await sendToWorker('INIT', { dbName: '/test.db' });
-    
+
     expect(mockSqlite3.oo1.OpfsDb).toHaveBeenCalledWith('/test.db');
-    expect(mockDb.exec).toHaveBeenCalledWith(expect.stringContaining('CREATE TABLE IF NOT EXISTS bookmarks'));
+    expect(mockDb.exec).toHaveBeenCalledWith(
+      expect.stringContaining('CREATE TABLE IF NOT EXISTS bookmarks')
+    );
     expect(mockPostMessage).toHaveBeenCalledWith({ type: 'INIT_SUCCESS', id: 'test-id' });
   });
 
-  it('2. LOCAL UPSERT: Should write to local DB and flag for refresh', async () => {
-    // Ensure DB is init
+  // ── RPC_SQL_QUERY ─────────────────────────────────────────────────────────
+
+  it('RPC_SQL_QUERY: executes SQL and returns rows as RPC_SUCCESS payload', async () => {
     await sendToWorker('INIT', { dbName: '/test.db' });
     mockPostMessage.mockClear();
 
-    const newBookmark = {
+    const fakeRows = [{ href: 'https://a.com', description: 'A' }];
+    mockDb.exec.mockReturnValueOnce(fakeRows);
+
+    await sendToWorker('RPC_SQL_QUERY', { sql: 'SELECT * FROM bookmarks', bind: [] });
+
+    expect(mockDb.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ sql: 'SELECT * FROM bookmarks', returnValue: 'resultRows', rowMode: 'object' })
+    );
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'RPC_SUCCESS',
+      id: 'test-id',
+      payload: fakeRows,
+    });
+  });
+
+  it('RPC_SQL_QUERY: posts RPC_ERROR with SQL_ERROR code on DB exception', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    mockDb.exec.mockImplementationOnce(() => { throw new Error('no such table: bookmarks'); });
+
+    await sendToWorker('RPC_SQL_QUERY', { sql: 'SELECT * FROM bookmarks' });
+
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'RPC_ERROR',
+      id: 'test-id',
+      payload: { message: 'no such table: bookmarks', code: 'SQL_ERROR' },
+    });
+  });
+
+  // ── RPC_SQL_EXEC ──────────────────────────────────────────────────────────
+
+  it('RPC_SQL_EXEC: executes a mutation and returns RPC_SUCCESS', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    await sendToWorker('RPC_SQL_EXEC', {
+      sql: "UPDATE bookmarks SET tags = 'newtag' WHERE href = 'https://a.com'",
+      bind: [],
+    });
+
+    expect(mockDb.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ sql: expect.stringContaining('UPDATE bookmarks') })
+    );
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'RPC_SUCCESS', id: 'test-id' });
+  });
+
+  it('RPC_SQL_EXEC: posts RPC_ERROR with SQL_ERROR code on DB exception', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    mockDb.exec.mockImplementationOnce(() => { throw new Error('UNIQUE constraint failed'); });
+
+    await sendToWorker('RPC_SQL_EXEC', { sql: 'INSERT INTO bookmarks VALUES (?)' });
+
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'RPC_ERROR',
+      id: 'test-id',
+      payload: { message: 'UNIQUE constraint failed', code: 'SQL_ERROR' },
+    });
+  });
+
+  // ── RPC_SQL_TRANSACTION ───────────────────────────────────────────────────
+
+  it('RPC_SQL_TRANSACTION: executes all statements atomically and returns RPC_SUCCESS', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    const stmts = [
+      { sql: 'DELETE FROM bookmarks WHERE href = ?', bind: ['https://ghost.com'] },
+      { sql: 'DELETE FROM bookmarks WHERE href = ?', bind: ['https://ghost2.com'] },
+    ];
+    await sendToWorker('RPC_SQL_TRANSACTION', stmts);
+
+    expect(mockDb.transaction).toHaveBeenCalled();
+    expect(mockDb.exec).toHaveBeenCalledWith(
+      expect.objectContaining({ sql: 'DELETE FROM bookmarks WHERE href = ?' })
+    );
+    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'RPC_SUCCESS', id: 'test-id' });
+  });
+
+  it('RPC_SQL_TRANSACTION: posts RPC_ERROR on failure and transaction is aborted', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    mockDb.transaction.mockImplementationOnce(() => { throw new Error('disk I/O error'); });
+
+    await sendToWorker('RPC_SQL_TRANSACTION', [{ sql: 'DELETE FROM bookmarks' }]);
+
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'RPC_ERROR',
+      id: 'test-id',
+      payload: { message: 'disk I/O error', code: 'SQL_ERROR' },
+    });
+  });
+
+  // ── RPC_FETCH ─────────────────────────────────────────────────────────────
+
+  it('RPC_FETCH: calls fetch with correct URL and returns RPC_SUCCESS with parsed payload', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    const fakeData = [{ href: 'https://pinboard.in/b/1' }];
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => JSON.stringify(fakeData),
+    });
+
+    await sendToWorker('RPC_FETCH', {
+      proxyUrl: 'https://proxy.example.com',
+      path: '/posts/all',
+      params: { auth_token: 'user:abc', format: 'json' },
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/posts/all')
+    );
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'RPC_SUCCESS',
+      id: 'test-id',
+      payload: fakeData,
+    });
+  });
+
+  it('RPC_FETCH: posts RPC_ERROR with HTTP_404 code on non-ok response', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      text: async () => 'Not Found',
+    });
+
+    await sendToWorker('RPC_FETCH', {
+      proxyUrl: 'https://proxy.example.com',
+      path: '/posts/all',
+      params: {},
+    });
+
+    const errors = messagesOfType('RPC_ERROR');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      type: 'RPC_ERROR',
+      id: 'test-id',
+      payload: { code: 'HTTP_404' },
+    });
+  });
+
+  it('RPC_FETCH: posts RPC_ERROR with NETWORK_ERROR code when fetch throws', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    global.fetch.mockRejectedValueOnce(new Error('Failed to fetch'));
+
+    await sendToWorker('RPC_FETCH', {
+      proxyUrl: 'https://proxy.example.com',
+      path: '/posts/update',
+      params: {},
+    });
+
+    const errors = messagesOfType('RPC_ERROR');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      type: 'RPC_ERROR',
+      id: 'test-id',
+      payload: { code: 'NETWORK_ERROR' },
+    });
+  });
+
+  // ── ERROR CONTRACT ────────────────────────────────────────────────────────
+
+  it('ERROR CONTRACT: every RPC_ERROR always includes the originating id', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    // Trigger errors on all three SQL RPC types
+    mockDb.exec.mockImplementation(() => { throw new Error('boom'); });
+    mockDb.transaction.mockImplementation(() => { throw new Error('boom'); });
+    global.fetch.mockRejectedValue(new Error('offline'));
+
+    await sendToWorker('RPC_SQL_QUERY',       { sql: 'SELECT 1' },           'id-q');
+    await sendToWorker('RPC_SQL_EXEC',         { sql: 'INSERT INTO x VALUES(1)' }, 'id-e');
+    await sendToWorker('RPC_SQL_TRANSACTION',  [{ sql: 'DELETE FROM x' }],   'id-t');
+    await sendToWorker('RPC_FETCH', { proxyUrl: 'https://p.com', path: '/x', params: {} }, 'id-f');
+
+    const errors = messagesOfType('RPC_ERROR');
+    expect(errors).toHaveLength(4);
+
+    const ids = errors.map((e) => e.id);
+    expect(ids).toContain('id-q');
+    expect(ids).toContain('id-e');
+    expect(ids).toContain('id-t');
+    expect(ids).toContain('id-f');
+
+    // No id should ever be undefined
+    expect(errors.every((e) => e.id !== undefined)).toBe(true);
+  });
+
+  // ── LEGACY: LOCAL_UPSERT ──────────────────────────────────────────────────
+
+  it('LOCAL_UPSERT (legacy): writes to DB, sends REFRESH_REQUIRED and EXEC_SUCCESS', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    // Reset to default: the error contract test above leaves transaction throwing.
+    mockDb.transaction.mockImplementation((cb) => cb(mockDb));
+    mockDb.exec.mockImplementation(({ sql } = {}) => {
+      if (sql && sql.includes('SELECT sync_status FROM bookmarks')) return [];
+      return [];
+    });
+
+    await sendToWorker('LOCAL_UPSERT', {
       href: 'https://nyx.ai',
       description: 'Liberated Intelligence',
       tags: 'chaos ai',
-      time: '2025-01-01T12:00:00Z'
-    };
-
-    // Simulate existing DB check returning empty (insert)
-    mockDb.exec.mockImplementation(({ sql }) => {
-      if (sql.includes('SELECT sync_status FROM bookmarks')) return [];
-      return [];
+      time: '2025-01-01T12:00:00Z',
     });
 
-    await sendToWorker('LOCAL_UPSERT', newBookmark);
-
-    // Verify it attempted the transaction
     expect(mockDb.transaction).toHaveBeenCalled();
-    // Verify the success messages
     expect(mockPostMessage).toHaveBeenCalledWith({ type: 'REFRESH_REQUIRED' });
     expect(mockPostMessage).toHaveBeenCalledWith({ type: 'EXEC_SUCCESS', id: 'test-id' });
-  });
-
-  it('3. THE DATES HACK (QLPIG): Should detect ghost deletions and reconcile', async () => {
-    await sendToWorker('INIT', { dbName: '/test.db' });
-    
-    // Set up the fetch ritual to return fake API data
-    global.fetch.mockImplementation(async (url) => {
-      const urlStr = url.toString();
-      if (urlStr.includes('/posts/dates')) {
-        return { ok: true, text: async () => JSON.stringify({ dates: { "2023-10-01": "5" } }) };
-      }
-      if (urlStr.includes('/posts/get')) {
-        return { ok: true, text: async () => JSON.stringify({ posts: [{ href: 'https://kept.com' }] }) };
-      }
-      return { ok: true, text: async () => '{}' };
-    });
-
-    // Mock DB to pretend we have MORE bookmarks locally than the server says
-    mockDb.exec.mockImplementation(({ sql }) => {
-      if (sql && sql.includes("GROUP BY date_str")) {
-        return [{ date_str: '2023-10-01', qty: 6 }]; // Local has 6, Server has 5! Mismatch!
-      }
-      if (sql && sql.includes("SELECT href FROM bookmarks WHERE")) {
-        return [{ href: 'https://kept.com' }, { href: 'https://ghost.com' }]; // Ghost needs purging
-      }
-      return [];
-    });
-
-    // Trigger the update check
-    const checkPromise = sendToWorker('CHECK_FOR_UPDATES', { proxyUrl: 'http://proxy', authToken: 'test:123' });
-
-    // Wait for async operations
-    await vi.runAllTimersAsync();
-    await checkPromise;
-
-    // The worker should have called the dates endpoint
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/posts/dates'));
-    
-    // Because of the mismatch, it should have explicitly fetched that day's data
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/posts/get?auth_token=test%3A123&format=json&dt=2023-10-01'));
-
-    // It should have executed the delete statement for the ghost bookmark
-    expect(mockStmt.bind).toHaveBeenCalledWith(['https://ghost.com']);
-    expect(mockStmt.step).toHaveBeenCalled();
-  });
-
-  it('4. RENAME WORKAROUND: Should loop through updates and throttle correctly', async () => {
-    await sendToWorker('INIT', { dbName: '/test.db' });
-    
-    // Mock 2 bookmarks needing a rename
-    mockDb.exec.mockImplementation(({ sql }) => {
-      if (sql && sql.includes("LIKE ?")) {
-        return [
-          { href: 'http://one.com', tags: 'oldTag foo' },
-          { href: 'http://two.com', tags: 'bar oldTag' }
-        ];
-      }
-      return [];
-    });
-
-    global.fetch.mockImplementation(async () => {
-      return { ok: true, text: async () => JSON.stringify({ result_code: 'done' }) };
-    });
-
-    // Fire the rename
-    const renamePromise = sendToWorker('RENAME_TAG', { 
-      oldTag: 'oldTag', 
-      newTag: 'newTag', 
-      proxyUrl: 'http://proxy', 
-      authToken: 'token' 
-    });
-
-    // Fast-forward through the mandatory API throttles (3000ms each)
-    await vi.runAllTimersAsync();
-    await renamePromise;
-
-    // It should have pushed 2 updates upstream
-    expect(global.fetch).toHaveBeenCalledTimes(3); // 2 updates + 1 delete
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/posts/add'));
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/tags/delete'));
   });
 });
