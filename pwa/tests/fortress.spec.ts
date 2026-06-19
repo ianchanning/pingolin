@@ -767,5 +767,46 @@ test.describe('The Universal Fortress', () => {
     // Page should reload and we should see the login container open by default
     await expect(app.loginContainer).toBeVisible({ timeout: 15000 });
   });
+
+  test('Scenario 26: RPC Error Recovery (Resilient Propagation)', async ({ page }) => {
+    const app = new AppPage(page);
+    const dbName = `test-err-recovery-${Math.random().toString(36).substring(7)}.db`;
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', [
+      { href: 'https://test-err.com', description: 'Err Bookmark', tags: 'err', time: '2023-10-01T12:00:00Z' }
+    ]);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    // 1. Initial Load & Login
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await app.expectBookmarkCount(1, { timeout: 10000 });
+
+    // 2. Simulate proxy failure by routing /posts/update to return 500 error
+    await page.context().route(url => url.href.includes('/posts/update'), async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Internal Server Error' })
+      });
+    });
+
+    // 3. Click Force Sync to trigger sync check
+    await page.getByTitle('Force Sync').click();
+
+    // 4. Verify sync status surfaces the error contract properly
+    const syncStatus = page.getByTestId('sync-status');
+    await expect(syncStatus).toContainText('Error (HTTP_500)', { timeout: 10000 });
+
+    // 5. Verify the app remains usable and doesn't freeze/go blank
+    await page.locator('#toggle-add-btn').click();
+    await expect(page.getByTestId('add-form')).toBeVisible();
+
+    // Check we can search and read list
+    await page.getByTestId('search-input').fill('Err Bookmark');
+    await app.expectBookmarkCount(1);
+  });
 });
 

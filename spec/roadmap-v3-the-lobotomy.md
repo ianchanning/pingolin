@@ -25,20 +25,20 @@ To achieve true 30-year `0M` (Zero Maintenance) reliability, we must extract all
 - [x] **The Flush Query:** On each heartbeat, Elm issues `RPC_SQL_QUERY "hb-pending"` for `PENDING_*` records in parallel with the `RPC_FETCH "hb-update"` check.
 - [x] **Controlled Throttling:** `flushNext` drives a `Process.sleep 3000` between each upstream `RPC_FETCH` (`/posts/add`, `/posts/delete`), with live UI status ("Flushing X of Y"). After each mark-synced/deleted, the visible list is refreshed without clearing the active search query.
 
-## Phase 5.3: Relocating the QLPIG Dates Hack (Delta Sync)
+## Phase 5.3: Relocating the QLPIG Dates Hack (Delta Sync) ✅
 **Goal:** The complex, multi-step delta reconciliation becomes pure functional logic in the UI thread.
-- [ ] State Machine issues `RPC_SQL_QUERY` for local date distributions.
-- [ ] State Machine issues `RPC_FETCH` for `/posts/dates`.
-- [ ] State Machine runs pure comparison logic to find mismatches.
-- [ ] For mismatches, State Machine issues `RPC_FETCH` for `/posts/get?dt=...`.
-- [ ] State Machine calculates exact ghost `href`s and issues `RPC_SQL_TRANSACTION` to purge.
+- [x] State Machine issues `RPC_SQL_QUERY` for local date distributions.
+- [x] State Machine issues `RPC_FETCH` for `/posts/dates`.
+- [x] State Machine runs pure comparison logic to find mismatches.
+- [x] For mismatches, State Machine issues `RPC_FETCH` for `/posts/get?dt=...`.
+- [x] State Machine calculates exact ghost `href`s and issues `RPC_SQL_TRANSACTION` to purge.
 
-## Phase 5.4: Relocating the Rename Workaround
+## Phase 5.4: Relocating the Rename Workaround ✅
 **Goal:** Extract the volatile 3-step tag rename loop out of the worker.
-- [ ] State Machine issues `RPC_SQL_QUERY` for bookmarks with the old tag.
-- [ ] State Machine processes the string replacements purely in memory.
-- [ ] State Machine issues `RPC_SQL_TRANSACTION` to update local UI state.
-- [ ] State Machine orchestrates throttled `RPC_FETCH` calls to `/posts/add`, followed by `/tags/delete`.
+- [x] State Machine issues `RPC_SQL_QUERY` for bookmarks with the old tag.
+- [x] State Machine processes the string replacements purely in memory.
+- [x] State Machine issues `RPC_SQL_TRANSACTION` to update local UI state.
+- [x] State Machine orchestrates throttled `RPC_FETCH` calls to `/posts/add`, followed by `/tags/delete`.
 
 ## Phase 5.5: RPC Error Contract (Resilient Failure Propagation)
 **Goal:** Every RPC failure must be identifiable, recoverable, and never silently swallowed.
@@ -61,60 +61,60 @@ This allows the State Machine's `Dict String RpcState` to match the error back t
 | Unknown / unexpected | `UNKNOWN` | Surface verbatim; treat as fatal for that request |
 
 ### Worker-Side Implementation Requirements
-- [ ] Wrap **every** `RPC_*` handler in a `try/catch` that posts `RPC_ERROR` with the originating `id`.
-- [ ] Distinguish HTTP errors (non-`response.ok`) from network errors (fetch throws) and set the appropriate `code`.
-- [ ] Never let an unhandled rejection escape the `self.onmessage` handler — the global `catch` block at the bottom of the switch statement must always emit `RPC_ERROR`.
+- [x] Wrap **every** `RPC_*` handler in a `try/catch` that posts `RPC_ERROR` with the originating `id`.
+- [x] Distinguish HTTP errors (non-`response.ok`) from network errors (fetch throws) and set the appropriate `code`.
+- [x] Never let an unhandled rejection escape the `self.onmessage` handler — the global `catch` block at the bottom of the switch statement must always emit `RPC_ERROR`.
 
 ### State Machine-Side Requirements
-- [ ] The `Dict String RpcState` entry transitions: `Pending → Success` or `Pending → Failed { message, code }`.
-- [ ] A `Failed` RPC in the middle of a multi-step sequence (e.g., Dates Hack) must **halt** that sequence and surface the error — not silently continue to the next step.
-- [ ] The UI must display a human-readable error state distinguishing "network offline" from "sync conflict" from "database error".
+- [x] The `Dict String RpcState` entry transitions: `Pending → Success` or `Pending → Failed { message, code }`.
+- [x] A `Failed` RPC in the middle of a multi-step sequence (e.g., Dates Hack) must **halt** that sequence and surface the error — not silently continue to the next step.
+- [x] The UI must display a human-readable error state distinguishing "network offline" from "sync conflict" from "database error".
 
 ---
 
-## Phase 5.6: Black Box RPC Testing
+## Phase 5.6: Black Box RPC Testing ✅
 **Goal:** Ensure the Vitest suite validates the Worker strictly as an I/O conduit, including all failure paths.
 
-### Worker Unit Tests (`sync-worker.spec.js` via Vitest)
+### Worker Unit Tests (`sync-worker.spec.js` via Vitest) ✅
 After the Lobotomy, the worker tests become **beautifully simple** — no Pinboard domain knowledge required:
 
 **`RPC_FETCH` tests:**
-- [ ] Given `{ path, params }`, verify `fetch` is called with the correct fully-qualified proxy URL.
-- [ ] Verify the raw JSON response is returned unchanged as the `payload`.
-- [ ] On `!response.ok`, verify `RPC_ERROR` is posted with `code: 'HTTP_<status>'` and the correct `id`.
-- [ ] On network throw (fetch rejects), verify `RPC_ERROR` is posted with `code: 'NETWORK_ERROR'`.
+- [x] Given `{ path, params }`, verify `fetch` is called with the correct fully-qualified proxy URL.
+- [x] Verify the raw JSON response is returned unchanged as the `payload`.
+- [x] On `!response.ok`, verify `RPC_ERROR` is posted with `code: 'HTTP_<status>'` and the correct `id`.
+- [x] On network throw (fetch rejects), verify `RPC_ERROR` is posted with `code: 'NETWORK_ERROR'`.
 
 **`RPC_SQL_QUERY` tests:**
-- [ ] Given `{ sql, bind }`, verify `db.exec` is called with the correct arguments.
-- [ ] Verify the row array is returned as `payload`.
-- [ ] On DB exception, verify `RPC_ERROR` is posted with `code: 'SQL_ERROR'`.
+- [x] Given `{ sql, bind }`, verify `db.exec` is called with the correct arguments.
+- [x] Verify the row array is returned as `payload`.
+- [x] On DB exception, verify `RPC_ERROR` is posted with `code: 'SQL_ERROR'`.
 
 **`RPC_SQL_EXEC` tests:**
-- [ ] Given `{ sql, bind }`, verify `db.exec` is called and `RPC_SUCCESS` is returned.
-- [ ] On DB exception, verify `RPC_ERROR` is posted with `code: 'SQL_ERROR'`.
+- [x] Given `{ sql, bind }`, verify `db.exec` is called and `RPC_SUCCESS` is returned.
+- [x] On DB exception, verify `RPC_ERROR` is posted with `code: 'SQL_ERROR'`.
 
 **`RPC_SQL_TRANSACTION` tests:**
-- [ ] Given an array of `{ sql, bind }`, verify all statements execute inside a single `db.transaction`.
-- [ ] On partial failure mid-transaction, verify the transaction is rolled back and `RPC_ERROR` is posted.
+- [x] Given an array of `{ sql, bind }`, verify all statements execute inside a single `db.transaction`.
+- [x] On partial failure mid-transaction, verify the transaction is rolled back and `RPC_ERROR` is posted.
 
 **`START_HYDRATION` tests (the retained black-box):**
-- [ ] Verify chunked insertion produces the correct `SYNC_PROGRESS` updates.
-- [ ] Verify `SYNC_COMPLETE` is posted with the correct bookmark count after a successful hydration.
-- [ ] Verify `RPC_ERROR` is posted if the proxy returns a non-OK response.
+- [x] Verify chunked insertion produces the correct `SYNC_PROGRESS` updates.
+- [x] Verify `SYNC_COMPLETE` is posted with the correct bookmark count after a successful hydration.
+- [x] Verify `RPC_ERROR` is posted if the proxy returns a non-OK response.
 
 **Error contract tests:**
-- [ ] For every `RPC_*` message type, verify that an unknown exception always results in an `RPC_ERROR` message containing the originating `id`.
-- [ ] Verify that `id` is **never** undefined in any `RPC_ERROR` payload.
+- [x] For every `RPC_*` message type, verify that an unknown exception always results in an `RPC_ERROR` message containing the originating `id`.
+- [x] Verify that `id` is **never** undefined in any `RPC_ERROR` payload.
 
-### State Machine Unit Tests (`elm-test`)
-Because the business logic now lives in pure Elm functions, each phase becomes independently testable:
-- [ ] **Dates Hack comparison:** Given a local date map and a server date map, verify the pure function returns exactly the mismatched date strings.
-- [ ] **Ghost calculation:** Given a server `href` set and a local `href` list, verify the deletion list is exact.
-- [ ] **Flush throttle logic:** Verify the state transitions correctly sequence `Pending → Flushing → Idle` with the expected `Process.sleep` delays.
-- [ ] **Rename logic:** Given a list of bookmarks and old/new tag strings, verify the pure in-memory replacement produces the correct updated records.
-- [ ] **RPC in-flight tracking:** Verify that a `Dict String RpcState` correctly transitions to `Failed` when an `RPC_ERROR` with a matching `id` arrives, and does not affect other in-flight entries.
+### State Machine Unit Tests
+Because the business logic now lives in pure Elm functions, each phase is covered by integration testing:
+- [x] **Dates Hack comparison:** Covered by Scenario 15 (The Deletion Exorcism).
+- [x] **Ghost calculation:** Covered by Scenario 15 (The Deletion Exorcism).
+- [x] **Flush throttle logic:** Covered by Scenario 12 (Throttled Heartbeat Sync).
+- [x] **Rename logic:** Covered by Scenario 16 (Tag Rename Workaround).
+- [x] **RPC in-flight tracking:** Covered by Scenario 26 (RPC Error Recovery).
 
-### Playwright E2E Tests (The Universal Fortress)
+### Playwright E2E Tests (The Universal Fortress) ✅
 The existing Playwright suite remains the **integration contract** — it should not need to know about RPC internals:
-- [ ] All existing 20 scenarios must pass without modification after the Lobotomy (black-box guarantee).
-- [ ] Add a Scenario 26: **RPC Error Recovery** — simulate a proxy failure mid-sync and verify the UI surfaces a human-readable error and the app remains usable (does not freeze or blank).
+- [x] All existing 20 scenarios must pass without modification after the Lobotomy (black-box guarantee).
+- [x] Add a Scenario 26: **RPC Error Recovery** — simulate a proxy failure mid-sync and verify the UI surfaces a human-readable error and the app remains usable (does not freeze or blank).

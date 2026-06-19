@@ -291,4 +291,79 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
     expect(mockPostMessage).toHaveBeenCalledWith({ type: 'REFRESH_REQUIRED' });
     expect(mockPostMessage).toHaveBeenCalledWith({ type: 'EXEC_SUCCESS', id: 'test-id' });
   });
+
+  // ── START_HYDRATION ────────────────────────────────────────────────────────
+
+  it('START_HYDRATION: chunked insertion produces correct SYNC_PROGRESS updates and SYNC_COMPLETE', async () => {
+    vi.useRealTimers();
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    // Reset to default: mockDb transaction implementation
+    mockDb.transaction.mockImplementation((cb) => cb(mockDb));
+
+    // 1500 bookmarks: fits in 2 chunks of 1000 and 500
+    const mockBookmarks = Array.from({ length: 1500 }, (_, i) => ({
+      href: `https://test-${i}.com`,
+      description: `Description ${i}`,
+      extended: `Extended ${i}`,
+      tags: `tags-${i}`,
+      time: '2023-10-01T12:00:00Z',
+    }));
+
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      text: async () => JSON.stringify(mockBookmarks),
+    });
+
+    await sendToWorker('START_HYDRATION', {
+      proxyUrl: 'https://proxy.example.com',
+      authToken: 'test-token',
+    }, 'hb-hydrate');
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/posts/all')
+    );
+
+    // Verify progress updates
+    const progressMsgs = messagesOfType('SYNC_PROGRESS');
+    expect(progressMsgs.length).toBeGreaterThanOrEqual(3); // Initial progress + 2 chunks
+    expect(progressMsgs[0].payload.progress).toBe(0.1);
+
+    expect(mockPostMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'SYNC_COMPLETE',
+        payload: { count: 1500 },
+        id: 'hb-hydrate',
+      })
+    );
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'REFRESH_REQUIRED',
+    });
+  });
+
+  it('START_HYDRATION: posts RPC_ERROR if proxy returns non-ok status', async () => {
+    await sendToWorker('INIT', { dbName: '/test.db' });
+    mockPostMessage.mockClear();
+
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      text: async () => 'Internal Server Error',
+    });
+
+    await sendToWorker('START_HYDRATION', {
+      proxyUrl: 'https://proxy.example.com',
+      authToken: 'test-token',
+    }, 'hb-hydrate');
+
+    const errorMsgs = messagesOfType('RPC_ERROR');
+    expect(errorMsgs).toHaveLength(1);
+    expect(errorMsgs[0]).toMatchObject({
+      type: 'RPC_ERROR',
+      id: 'hb-hydrate',
+      payload: { code: 'HTTP_500' },
+    });
+  });
 });
