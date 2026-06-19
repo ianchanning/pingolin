@@ -579,8 +579,11 @@ test.describe('The Universal Fortress', () => {
 
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
+    await app.expectBookmarkCount(0, { timeout: 10000 });
 
-    // The session restore auto-triggers the heartbeat which hits /posts/update → HTTP 500.
+    // Reload the page to trigger session restoration, which auto-triggers the heartbeat check
+    await page.reload();
+
     // We expect the status to reflect the error.
     await expect(app.syncStatus).toContainText(/Error.*HTTP_500|HTTP 500/, { timeout: 15000 });
   });
@@ -807,6 +810,48 @@ test.describe('The Universal Fortress', () => {
     // Check we can search and read list
     await page.getByTestId('search-input').fill('Err Bookmark');
     await app.expectBookmarkCount(1);
+  });
+
+  test('Scenario 27: The Cache-Busting Offline Trap (Worker Assassination)', async ({ page }) => {
+    const app = new AppPage(page);
+
+    // 1. Initial Load: Boot the app.
+    await app.goto('/');
+    
+    // 2. Guarantee the SW is active and controlling the page.
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+      // Brief pause to ensure clients.claim() has taken full effect
+      await new Promise(r => setTimeout(r, 500));
+    });
+
+    // 3. Second Load: Now the SW is in control. 
+    // It intercepts `sync-worker.js?v=1` and caches it via Strategy B.
+    await page.reload();
+    await expect(app.loginContainer).toBeVisible();
+
+    // 4. The Assassination: We intercept the exact worker request and kill it.
+    // This forces the Service Worker into the `.catch()` block.
+    await page.route('**/sync-worker.js*', route => {
+      console.log(`[TEST] Forcing network failure for: ${route.request().url()}`);
+      route.abort('failed'); 
+    });
+
+    // 5. The Trigger: Reload. app.js asks for `sync-worker.js?v=2`.
+    // The network fails. The SW checks the cache for `v=2`. It misses.
+    // The SW returns a 503 text response. The browser refuses to boot the worker.
+    await page.reload();
+
+    // 6. The Assertion: Prove the bug exists by watching the app die.
+    // Because the worker never boots, Elm never receives INIT_SUCCESS.
+    // The UI should be permanently stuck on the initial state.
+    const statusText = page.getByTestId('sync-status');
+    
+    // If the bug is ACTIVE, the status will never change from the initial state.
+    // Note: We use a short timeout because we EXPECT it to be stuck.
+    await expect(statusText).toContainText('Awakening Ritual...', { timeout: 3000 });
+
+    // (Once we fix the bug, we will change this assertion to expect the login container or online status!)
   });
 });
 

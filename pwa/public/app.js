@@ -3,7 +3,8 @@ const dbName = urlParams.get('dbName') || '/pinboard.db';
 const initialQuery = urlParams.get('q') || '';
 
 // Initialize Worker with cache busting
-const worker = new Worker('/sync-worker.js?v=' + Date.now(), {
+// const worker = new Worker('/sync-worker.js?v=' + Date.now(), {
+const worker = new Worker('/sync-worker.js', {
   type: 'module'
 });
 

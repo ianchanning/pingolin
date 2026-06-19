@@ -13,7 +13,8 @@ const APP_ASSETS = [
   '/',
   '/index.html',
   '/main.js',
-  '/app.js'
+  '/app.js',
+  '/sync-worker.js'
 ];
 
 // Install Event: Cache what we can
@@ -97,7 +98,7 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(async () => {
         // Fallback to cache if network is dead
-        const cached = await caches.match(event.request);
+        const cached = await caches.match(event.request, { ignoreSearch: true });
         return enhanceResponse(cached) || new Response('Offline: Resource not in cache.', { status: 503 });
       })
   );
