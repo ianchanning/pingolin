@@ -1048,10 +1048,10 @@ rpcFetch rpcId path params model =
                 , ( "id", Encode.string rpcId )
                 , ( "payload"
                   , Encode.object
-                      (( "proxyUrl", Encode.string model.proxyUrl )
-                      :: ( "path", Encode.string path )
-                      :: List.map (\( k, v ) -> ( k, Encode.string v )) params
-                      )
+                      [ ( "proxyUrl", Encode.string model.proxyUrl )
+                      , ( "path", Encode.string path )
+                      , ( "params", Encode.object ( List.map (\( k, v ) -> ( k, Encode.string v )) params ) )
+                      ]
                   )
                 ]
     in
