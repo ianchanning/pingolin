@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    /* 
+       REFERENCE: The "NodeNext" strategy for future-proofing imports.
+       Matt Pocock emphasizes that NodeNext is the only way to ensure 
+       compatibility with the actual ESM specification.
+       https://www.totaltypescript.com/concepts/module-resolution
+    */
+    "target": "ESNext", 
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ESNext"],
+
+    /* 
+       REFERENCE: "Strictness is non-negotiable."
+       Turning on all strict flags prevents the 'any' leak and ensures 
+       type safety persists as the codebase grows.
+       https://www.totaltypescript.com/concepts/strict-mode
+    */
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+
+    /* 
+       REFERENCE: Tooling Compatibility.
+       isolatedModules is required because modern transpilers (esbuild, swc, vite)
+       process files individually and cannot perform cross-file type analysis.
+       https://www.totaltypescript.com/concepts/isolated-modules
+    */
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "isolatedModules": true, 
+    
+    /* 
+       REFERENCE: Scaling Monorepos.
+       'composite' enables Project References, allowing TypeScript to 
+       build the project in chunks rather than one giant blob.
+       https://www.totaltypescript.com/concepts/project-references
+    */
+    "composite": true, 
+    "declaration": true, 
+    "declarationMap": true
+  }
+}

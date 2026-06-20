@@ -4,11 +4,14 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "predev": "node generate-version.js",
-    "dev": "concurrently -n \"SERVER,ELM\" -c \"cyan,magenta\" \"node server.js\" \"npm run watch:elm\"",
     "watch:elm": "chokidar 'src/**/*.elm' -c 'elm make src/Main.elm --output=public/main.js' --initial",
+    "watch:ts": "tsc -p tsconfig.json --watch",
+    "predev": "node generate-version.js",
+    "dev": "concurrently -n \"SERVER,ELM,TS\" -c \"cyan,magenta,yellow\" \"node server.js\" \"npm run watch:elm\" \"npm run watch:ts\"",
     "prebuild": "node generate-version.js",
-    "build": "elm make src/Main.elm --output=public/main.js --optimize && mkdir -p dist && cp -rv public/* dist/ && touch dist/.nojekyll",
+    "build:ts": "tsc -p tsconfig.json",
+    "build:elm": "elm make src/Main.elm --output=public/main.js --optimize && mkdir -p dist && cp -rv public/* dist/ && touch dist/.nojekyll",
+    "build": "npm run build:ts && npm run build:elm",
     "test:e2e": "playwright test tests/fortress.spec.ts",
     "test:unit": "vitest run tests/sync-worker.spec.js",
     "test": "npm run test:unit && npm run test:e2e"

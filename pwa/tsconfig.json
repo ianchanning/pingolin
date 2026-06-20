@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "lib": ["ESNext", "DOM", "DOM.Iterable", "WebWorker"],
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "public/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
