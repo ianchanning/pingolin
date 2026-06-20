@@ -126,7 +126,9 @@ const initDb = async (dbName = '/pinboard.db') => {
       console.warn('[Worker] Transient Storage:', dbName);
     }
 
-    db.transaction((db) => { db.exec(SCHEMA); });
+    db.transaction((db) => {
+      db.exec(SCHEMA);
+    });
     db.exec('PRAGMA cache_size = 2000;');
     db.exec('PRAGMA synchronous = NORMAL;');
     console.log('[Worker] Database Ritual Complete.');
@@ -135,25 +137,38 @@ const initDb = async (dbName = '/pinboard.db') => {
     const meta = db.exec({
       sql: "SELECT key, value FROM metadata WHERE key IN ('last_full_sync_time', 'auth_token', 'proxy_url')",
       returnValue: 'resultRows',
-      rowMode: 'object'
+      rowMode: 'object',
     });
 
     const session = {};
-    for (const row of meta) { session[row.key] = row.value; }
+    for (const row of meta) {
+      session[row.key] = row.value;
+    }
 
     if (session.auth_token) {
       console.log('[Worker] Session Detected:', session.auth_token);
       // Self-heal: if last_full_sync_time is missing but bookmarks exist, write it
       if (!session.last_full_sync_time) {
-        const countResult = db.exec({ sql: 'SELECT count(*) as count FROM bookmarks', returnValue: 'resultRows', rowMode: 'object' });
+        const countResult = db.exec({
+          sql: 'SELECT count(*) as count FROM bookmarks',
+          returnValue: 'resultRows',
+          rowMode: 'object',
+        });
         const count = countResult.length > 0 ? countResult[0].count : 0;
         if (count > 0) {
-          console.warn(`[Worker] Zombie DB Detected: ${count} bookmarks but no last_full_sync_time. Healing...`);
-          const latest = db.exec({ sql: 'SELECT time FROM bookmarks ORDER BY time DESC LIMIT 1', returnValue: 'resultRows', rowMode: 'object' });
-          const healTime = latest.length > 0 ? latest[0].time : new Date().toISOString();
+          console.warn(
+            `[Worker] Zombie DB Detected: ${count} bookmarks but no last_full_sync_time. Healing...`
+          );
+          const latest = db.exec({
+            sql: 'SELECT time FROM bookmarks ORDER BY time DESC LIMIT 1',
+            returnValue: 'resultRows',
+            rowMode: 'object',
+          });
+          const healTime =
+            latest.length > 0 ? latest[0].time : new Date().toISOString();
           db.exec({
             sql: "INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?), ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            bind: [healTime, healTime]
+            bind: [healTime, healTime],
           });
           session.last_full_sync_time = healTime;
         }
@@ -163,8 +178,8 @@ const initDb = async (dbName = '/pinboard.db') => {
         payload: {
           lastSync: session.last_full_sync_time || '',
           token: session.auth_token || '',
-          proxyUrl: session.proxy_url || ''
-        }
+          proxyUrl: session.proxy_url || '',
+        },
       });
     }
 
@@ -188,8 +203,12 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
     throw new Error(`NETWORK_ERROR: No base URL provided for path ${path}`);
   }
 
-  try { new URL(baseUrl); } catch (_) {
-    throw new Error(`NETWORK_ERROR: Invalid base URL "${baseUrl}" for path ${path}`);
+  try {
+    new URL(baseUrl);
+  } catch (_) {
+    throw new Error(
+      `NETWORK_ERROR: Invalid base URL "${baseUrl}" for path ${path}`
+    );
   }
 
   const sanitizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
@@ -205,9 +224,16 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
 
   if (!response.ok) {
     let bodyText = '';
-    try { bodyText = await response.text(); } catch (_) {}
-    console.error(`[Worker] Proxy Error (${response.status}) at ${path}:`, bodyText);
-    throw new Error(`HTTP ${response.status}: ${bodyText.trim() || response.statusText}`);
+    try {
+      bodyText = await response.text();
+    } catch (_) {}
+    console.error(
+      `[Worker] Proxy Error (${response.status}) at ${path}:`,
+      bodyText
+    );
+    throw new Error(
+      `HTTP ${response.status}: ${bodyText.trim() || response.statusText}`
+    );
   }
 
   const text = await response.text();
@@ -216,10 +242,17 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
   try {
     return JSON.parse(text);
   } catch (_) {
-    if (text.includes('code="done"') || text.includes('result_code":"done"') || text.includes('result_code="done"')) {
+    if (
+      text.includes('code="done"') ||
+      text.includes('result_code":"done"') ||
+      text.includes('result_code="done"')
+    ) {
       return { result_code: 'done' };
     }
-    console.error(`[Worker] Non-JSON response at ${path}:`, text.substring(0, 100));
+    console.error(
+      `[Worker] Non-JSON response at ${path}:`,
+      text.substring(0, 100)
+    );
     return null;
   }
 };
@@ -227,8 +260,16 @@ const fetchRitual = async (baseUrl, path, params = {}) => {
 // ─── Tag Utilities ───────────────────────────────────────────────────────────
 
 const refreshPopularTags = (id) => {
-  const tagRows = db.exec({ sql: 'SELECT tags FROM bookmarks', returnValue: 'resultRows', rowMode: 'object' });
-  const aliasRows = db.exec({ sql: 'SELECT mapped_tag FROM tag_aliases', returnValue: 'resultRows', rowMode: 'object' });
+  const tagRows = db.exec({
+    sql: 'SELECT tags FROM bookmarks',
+    returnValue: 'resultRows',
+    rowMode: 'object',
+  });
+  const aliasRows = db.exec({
+    sql: 'SELECT mapped_tag FROM tag_aliases',
+    returnValue: 'resultRows',
+    rowMode: 'object',
+  });
 
   const counts = {};
   for (const row of tagRows) {
@@ -239,7 +280,9 @@ const refreshPopularTags = (id) => {
     counts[row.mapped_tag] = (counts[row.mapped_tag] || 0) + 1000;
   }
 
-  const sortedTags = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+  const sortedTags = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map((e) => e[0]);
   self.postMessage({ type: 'QUERY_RESULTS', payload: sortedTags, id });
 };
 
@@ -257,16 +300,28 @@ const refreshPopularTags = (id) => {
  */
 const hydrateArchive = async (proxyUrl, authToken, id) => {
   postSyncProgress('NETWORK: Summing archive...', 0.1, id);
-  const bookmarks = await fetchRitual(proxyUrl, '/posts/all', { auth_token: authToken, format: 'json' });
+  const bookmarks = await fetchRitual(proxyUrl, '/posts/all', {
+    auth_token: authToken,
+    format: 'json',
+  });
   if (!bookmarks) throw new Error('Server returned empty archive');
 
   const CHUNK_SIZE = 1000;
   for (let i = 0; i < bookmarks.length; i += CHUNK_SIZE) {
     const chunk = bookmarks.slice(i, i + CHUNK_SIZE);
     db.transaction((db) => {
-      const stmt = db.prepare("INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, local_last_modified=excluded.local_last_modified");
+      const stmt = db.prepare(
+        "INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, local_last_modified=excluded.local_last_modified"
+      );
       for (const b of chunk) {
-        stmt.bind([b.href, b.description, b.extended || '', b.tags, b.time, Date.now()]);
+        stmt.bind([
+          b.href,
+          b.description,
+          b.extended || '',
+          b.tags,
+          b.time,
+          Date.now(),
+        ]);
         stmt.step();
         stmt.reset();
       }
@@ -274,17 +329,26 @@ const hydrateArchive = async (proxyUrl, authToken, id) => {
     });
     postSyncProgress(
       `LOCAL: Ingested ${Math.min(i + CHUNK_SIZE, bookmarks.length)} / ${bookmarks.length}`,
-      0.3 + (0.6 * (i + CHUNK_SIZE) / bookmarks.length),
+      0.3 + (0.6 * (i + CHUNK_SIZE)) / bookmarks.length,
       id
     );
-    await new Promise(r => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
   }
 
   db.exec({
     sql: "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?), ('last_full_sync_time', ?), ('auth_token', ?), ('proxy_url', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-    bind: [new Date().toISOString(), new Date().toISOString(), authToken, proxyUrl]
+    bind: [
+      new Date().toISOString(),
+      new Date().toISOString(),
+      authToken,
+      proxyUrl,
+    ],
   });
-  self.postMessage({ type: 'SYNC_COMPLETE', payload: { count: bookmarks.length }, id });
+  self.postMessage({
+    type: 'SYNC_COMPLETE',
+    payload: { count: bookmarks.length },
+    id,
+  });
   self.postMessage({ type: 'REFRESH_REQUIRED' });
   refreshPopularTags('popular-tags');
 };
@@ -311,10 +375,12 @@ self.onmessage = async (e) => {
 
     // Ensure DB is ready for all other messages
     if (!db && dbPromise) await dbPromise;
-    if (!db) { dbPromise = initDb(); await dbPromise; }
+    if (!db) {
+      dbPromise = initDb();
+      await dbPromise;
+    }
 
     switch (type) {
-
       // ══════════════════════════════════════════════════════════════════════
       // PHASE 5.0: GENERIC RPC HANDLERS
       // The Sovereign State Machine issues these commands.
@@ -335,7 +401,12 @@ self.onmessage = async (e) => {
       case 'RPC_SQL_QUERY': {
         const { sql, bind } = payload;
         try {
-          const rows = db.exec({ sql, bind, returnValue: 'resultRows', rowMode: 'object' });
+          const rows = db.exec({
+            sql,
+            bind,
+            returnValue: 'resultRows',
+            rowMode: 'object',
+          });
           self.postMessage({ type: 'RPC_SUCCESS', id, payload: rows });
         } catch (err) {
           postRpcError(err.message, 'SQL_ERROR');
@@ -390,42 +461,84 @@ self.onmessage = async (e) => {
 
       case 'QUERY_SEARCH': {
         if (!payload || payload.trim() === '') {
-          const all = db.exec({ sql: 'SELECT * FROM bookmarks ORDER BY time DESC', returnValue: 'resultRows', rowMode: 'object' });
+          const all = db.exec({
+            sql: 'SELECT * FROM bookmarks ORDER BY time DESC',
+            returnValue: 'resultRows',
+            rowMode: 'object',
+          });
           self.postMessage({ type: 'QUERY_RESULTS', payload: all, id });
           break;
         }
-        const aliasRows = db.exec({ sql: 'SELECT mapped_tag FROM tag_aliases WHERE keyword = ?', bind: [payload.toLowerCase()], returnValue: 'resultRows', rowMode: 'object' });
-        const effectiveQuery = aliasRows.length > 0 ? aliasRows[0].mapped_tag : payload;
+        const aliasRows = db.exec({
+          sql: 'SELECT mapped_tag FROM tag_aliases WHERE keyword = ?',
+          bind: [payload.toLowerCase()],
+          returnValue: 'resultRows',
+          rowMode: 'object',
+        });
+        const effectiveQuery =
+          aliasRows.length > 0 ? aliasRows[0].mapped_tag : payload;
         const sql = effectiveQuery.startsWith('#')
           ? "SELECT * FROM bookmarks WHERE (' ' || tags || ' ') LIKE ? ORDER BY time DESC"
-          : "SELECT b.* FROM bookmarks b JOIN bookmarks_fts f ON b.rowid = f.rowid WHERE bookmarks_fts MATCH ? ORDER BY b.time DESC";
+          : 'SELECT b.* FROM bookmarks b JOIN bookmarks_fts f ON b.rowid = f.rowid WHERE bookmarks_fts MATCH ? ORDER BY b.time DESC';
         const bind = effectiveQuery.startsWith('#')
           ? [`% ${effectiveQuery.substring(1)} %`]
           : [`"${effectiveQuery.replace(/"/g, '""')}"`];
-        const results = db.exec({ sql, bind, returnValue: 'resultRows', rowMode: 'object' });
+        const results = db.exec({
+          sql,
+          bind,
+          returnValue: 'resultRows',
+          rowMode: 'object',
+        });
         self.postMessage({ type: 'QUERY_RESULTS', payload: results, id });
         break;
       }
 
       case 'QUERY_ALL': {
-        const all = db.exec({ sql: 'SELECT * FROM bookmarks ORDER BY time DESC', returnValue: 'resultRows', rowMode: 'object' });
-        console.log('[Worker] QUERY_ALL results count:', all.length, all.length > 0 ? all[0].href : 'NONE');
+        const all = db.exec({
+          sql: 'SELECT * FROM bookmarks ORDER BY time DESC',
+          returnValue: 'resultRows',
+          rowMode: 'object',
+        });
+        console.log(
+          '[Worker] QUERY_ALL results count:',
+          all.length,
+          all.length > 0 ? all[0].href : 'NONE'
+        );
         self.postMessage({ type: 'QUERY_RESULTS', payload: all, id });
         break;
       }
 
       case 'LOCAL_UPSERT': {
-        console.log('[Worker] LOCAL_UPSERT:', payload.href, payload.description);
+        console.log(
+          '[Worker] LOCAL_UPSERT:',
+          payload.href,
+          payload.description
+        );
         db.transaction((db) => {
           const now = Date.now();
-          const existing = db.exec({ sql: 'SELECT sync_status FROM bookmarks WHERE href = ?', bind: [payload.href], returnValue: 'resultRows' });
-          const status = existing.length > 0 ? 'PENDING_UPDATE' : 'PENDING_INSERT';
+          const existing = db.exec({
+            sql: 'SELECT sync_status FROM bookmarks WHERE href = ?',
+            bind: [payload.href],
+            returnValue: 'resultRows',
+          });
+          const status =
+            existing.length > 0 ? 'PENDING_UPDATE' : 'PENDING_INSERT';
           db.exec({
-            sql: "INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, sync_status=excluded.sync_status, local_last_modified=excluded.local_last_modified",
-            bind: [payload.href, payload.description || '', payload.extended || '', payload.tags || '', payload.time || new Date().toISOString(), status, now]
+            sql: 'INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, sync_status=excluded.sync_status, local_last_modified=excluded.local_last_modified',
+            bind: [
+              payload.href,
+              payload.description || '',
+              payload.extended || '',
+              payload.tags || '',
+              payload.time || new Date().toISOString(),
+              status,
+              now,
+            ],
           });
         });
-        console.log('[Worker] LOCAL_UPSERT committed. Sending REFRESH_REQUIRED');
+        console.log(
+          '[Worker] LOCAL_UPSERT committed. Sending REFRESH_REQUIRED'
+        );
         self.postMessage({ type: 'REFRESH_REQUIRED' });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         refreshPopularTags('popular-tags');
@@ -433,13 +546,21 @@ self.onmessage = async (e) => {
       }
 
       case 'LOCAL_DELETE':
-        db.exec({ sql: "UPDATE bookmarks SET sync_status = 'PENDING_DELETE', local_last_modified = ? WHERE href = ?", bind: [Date.now(), payload] });
+        db.exec({
+          sql: "UPDATE bookmarks SET sync_status = 'PENDING_DELETE', local_last_modified = ? WHERE href = ?",
+          bind: [Date.now(), payload],
+        });
         self.postMessage({ type: 'REFRESH_REQUIRED' });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         break;
 
       case 'QUERY': {
-        const rows = db.exec({ sql: payload.sql, bind: payload.bind, returnValue: 'resultRows', rowMode: 'object' });
+        const rows = db.exec({
+          sql: payload.sql,
+          bind: payload.bind,
+          returnValue: 'resultRows',
+          rowMode: 'object',
+        });
         self.postMessage({ type: 'QUERY_RESULTS', payload: rows, id });
         break;
       }
@@ -454,7 +575,10 @@ self.onmessage = async (e) => {
         break;
 
       case 'UPSERT_TAG_ALIAS':
-        db.exec({ sql: 'INSERT INTO tag_aliases (keyword, mapped_tag) VALUES (?, ?) ON CONFLICT(keyword) DO UPDATE SET mapped_tag=excluded.mapped_tag', bind: [payload.keyword, payload.mapped_tag] });
+        db.exec({
+          sql: 'INSERT INTO tag_aliases (keyword, mapped_tag) VALUES (?, ?) ON CONFLICT(keyword) DO UPDATE SET mapped_tag=excluded.mapped_tag',
+          bind: [payload.keyword, payload.mapped_tag],
+        });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
         refreshPopularTags('popular-tags');
         break;
@@ -470,7 +594,9 @@ self.onmessage = async (e) => {
 
       case 'DEBUG_CLEAR_DB':
         db.transaction((db) => {
-          db.exec('DROP TABLE IF EXISTS bookmarks; DROP TABLE IF EXISTS bookmarks_fts; DROP TABLE IF EXISTS tag_aliases; DROP TABLE IF EXISTS metadata;');
+          db.exec(
+            'DROP TABLE IF EXISTS bookmarks; DROP TABLE IF EXISTS bookmarks_fts; DROP TABLE IF EXISTS tag_aliases; DROP TABLE IF EXISTS metadata;'
+          );
           db.exec(SCHEMA);
         });
         self.postMessage({ type: 'EXEC_SUCCESS', id });
@@ -482,7 +608,15 @@ self.onmessage = async (e) => {
   } catch (error) {
     // Global safety net: no unhandled rejection escapes.
     // Always emit RPC_ERROR with the originating id.
-    console.error('[Worker] Unhandled exception for message type:', type, error);
-    self.postMessage({ type: 'RPC_ERROR', id, payload: { message: error.message, code: 'UNKNOWN' } });
+    console.error(
+      '[Worker] Unhandled exception for message type:',
+      type,
+      error
+    );
+    self.postMessage({
+      type: 'RPC_ERROR',
+      id,
+      payload: { message: error.message, code: 'UNKNOWN' },
+    });
   }
 };

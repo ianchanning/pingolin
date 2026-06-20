@@ -5,6 +5,10 @@
     "proxy",
     "pwa"
   ],
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
   "allowScripts": {
     "sharp@0.34.5": true,
     "workerd@1.20260601.1": true
@@ -12,5 +16,9 @@
   "overrides": {
     "esbuild": "^0.28.1"
   },
-  "version": "2.0.1"
+  "version": "2.0.1",
+  "devDependencies": {
+    "prettier": "^3.8.4",
+    "prettier-plugin-elm": "^0.12.0"
+  }
 }

@@ -5,7 +5,7 @@ const initialQuery = urlParams.get('q') || '';
 // Initialize Worker with cache busting
 // const worker = new Worker('/sync-worker.js?v=' + Date.now(), {
 const worker = new Worker('/sync-worker.js', {
-  type: 'module'
+  type: 'module',
 });
 
 // Database Bridge for Tests & Debugging
@@ -63,8 +63,8 @@ window.db.send('INIT', { dbName }).then(() => {
           payload: {
             token: token,
             proxyUrl: proxyUrl,
-            lastSync: ''
-          }
+            lastSync: '',
+          },
         });
       }
     }
@@ -76,8 +76,8 @@ const app = Elm.Main.init({
   flags: {
     query: initialQuery,
     isHydrated: localStorage.getItem('pingolin_hydrated') === 'true',
-    version: window.PACKAGE_VERSION || '0.0.0'
-  }
+    version: window.PACKAGE_VERSION || '0.0.0',
+  },
 });
 window.elmApp = app;
 
@@ -92,7 +92,7 @@ window.refreshApp = async () => {
     worker.addEventListener('message', handler);
     if (app.ports && app.ports.fromWorker) {
       app.ports.fromWorker.send({
-        type: 'REFRESH_REQUIRED'
+        type: 'REFRESH_REQUIRED',
       });
     } else {
       resolve();
@@ -108,11 +108,15 @@ if (app.ports && app.ports.viewportSize) {
       app.ports.viewportSize.send(container.clientHeight);
 
       // Report scroll position
-      container.addEventListener('scroll', () => {
-        if (app.ports.scrollPosition) {
-          app.ports.scrollPosition.send(Math.round(container.scrollTop));
-        }
-      }, { passive: true });
+      container.addEventListener(
+        'scroll',
+        () => {
+          if (app.ports.scrollPosition) {
+            app.ports.scrollPosition.send(Math.round(container.scrollTop));
+          }
+        },
+        { passive: true }
+      );
 
       // Watch for size changes
       const resizer = new ResizeObserver(() => {
@@ -215,7 +219,10 @@ class SyncOrchestrator {
   }
 
   async startLoop() {
-    return this.db.send('START_SYNC_LOOP', { proxyUrl: this.proxyUrl, authToken: this.authToken });
+    return this.db.send('START_SYNC_LOOP', {
+      proxyUrl: this.proxyUrl,
+      authToken: this.authToken,
+    });
   }
 
   async setInterval(ms) {
@@ -243,9 +250,10 @@ window.sync = new SyncOrchestrator(window.db);
 // Register Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('[SW] Registered:', reg.scope))
-      .catch(err => console.error('[SW] Registration Failed:', err));
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => console.log('[SW] Registered:', reg.scope))
+      .catch((err) => console.error('[SW] Registration Failed:', err));
   });
 }
 

@@ -6,7 +6,7 @@ const VENDOR_ASSETS = [
   '/favicon-32x32.png',
   '/favicon-16x16.png',
   '/apple-touch-icon.png',
-  '/site.webmanifest'
+  '/site.webmanifest',
 ];
 
 const APP_ASSETS = [
@@ -14,7 +14,7 @@ const APP_ASSETS = [
   '/index.html',
   '/main.js',
   '/app.js',
-  '/sync-worker.js'
+  '/sync-worker.js',
 ];
 
 // Install Event: Cache what we can
@@ -26,7 +26,7 @@ self.addEventListener('install', (event) => {
       // Use map and individual add to prevent one 404 from failing the whole cache
       // In production, /src/ files won't exist at these paths.
       return Promise.allSettled(
-        [...VENDOR_ASSETS, ...APP_ASSETS].map(url => cache.add(url))
+        [...VENDOR_ASSETS, ...APP_ASSETS].map((url) => cache.add(url))
       );
     })
   );
@@ -38,10 +38,12 @@ self.addEventListener('activate', (event) => {
     Promise.all([
       caches.keys().then((keys) => {
         return Promise.all(
-          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+          keys
+            .filter((key) => key !== CACHE_NAME)
+            .map((key) => caches.delete(key))
         );
       }),
-      self.clients.claim() // Take control of all clients immediately
+      self.clients.claim(), // Take control of all clients immediately
     ])
   );
 });
@@ -49,16 +51,16 @@ self.addEventListener('activate', (event) => {
 // Helper to inject COOP/COEP headers
 function enhanceResponse(response) {
   if (!response || response.type === 'opaque') return response;
-  
+
   try {
     const newHeaders = new Headers(response.headers);
     newHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
     newHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
-    
+
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
-      headers: newHeaders
+      headers: newHeaders,
     });
   } catch (err) {
     console.error('[SW] Failed to enhance response:', err);
@@ -71,15 +73,17 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
-  
-  // Filter for web schemes only. 
+
+  // Filter for web schemes only.
   if (!['http:', 'https:'].includes(url.protocol)) return;
 
   // Strategy A: Cache-First for heavy/static vendor assets
-  if (VENDOR_ASSETS.some(asset => url.pathname.endsWith(asset))) {
+  if (VENDOR_ASSETS.some((asset) => url.pathname.endsWith(asset))) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
-        return cached ? enhanceResponse(cached) : fetch(event.request).then(enhanceResponse);
+        return cached
+          ? enhanceResponse(cached)
+          : fetch(event.request).then(enhanceResponse);
       })
     );
     return;
@@ -92,14 +96,21 @@ self.addEventListener('fetch', (event) => {
         // Update cache with fresh version if it's a valid successful response
         if (response.ok) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          caches
+            .open(CACHE_NAME)
+            .then((cache) => cache.put(event.request, clone));
         }
         return enhanceResponse(response);
       })
       .catch(async () => {
         // Fallback to cache if network is dead
-        const cached = await caches.match(event.request, { ignoreSearch: true });
-        return enhanceResponse(cached) || new Response('Offline: Resource not in cache.', { status: 503 });
+        const cached = await caches.match(event.request, {
+          ignoreSearch: true,
+        });
+        return (
+          enhanceResponse(cached) ||
+          new Response('Offline: Resource not in cache.', { status: 503 })
+        );
       })
   );
 });

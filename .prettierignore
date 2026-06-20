@@ -1,0 +1,31 @@
+# Dependencies
+node_modules
+.npm
+
+# Lock files (Auto-generated, formatting these creates massive git diffs)
+package-lock.json
+
+# Third-party libraries (NEVER format vendor code)
+pwa/public/vendor/
+
+# Build artifacts & Generated files
+pwa/public/version.js
+dist/
+build/
+
+# Archive (Old scripts and data dumps; formatting these creates useless git noise)
+archive/
+
+# Binary files & Assets (Prettier usually ignores these, but being explicit is safer)
+*.png
+*.ico
+*.wasm
+*.xcf
+pwa/public/favicon*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Disable Markdown formatting (does stupid `_` for italics)
+*.md

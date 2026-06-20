@@ -43,13 +43,16 @@ export class AppPage {
   }
 
   async mockProxy(route: string, data: any) {
-    await this.page.context().route(url => url.href.includes(route), async (r) => {
-      await r.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(data),
-      });
-    });
+    await this.page.context().route(
+      (url) => url.href.includes(route),
+      async (r) => {
+        await r.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(data),
+        });
+      }
+    );
   }
 
   async expectOnline() {
@@ -61,7 +64,10 @@ export class AppPage {
   }
 
   async expectBookmarkCount(count: number, options?: { timeout?: number }) {
-    await expect(this.page.getByTestId('bookmark-item')).toHaveCount(count, options);
+    await expect(this.page.getByTestId('bookmark-item')).toHaveCount(
+      count,
+      options
+    );
   }
 
   getBookmarkItem(index: number): BookmarkItem {

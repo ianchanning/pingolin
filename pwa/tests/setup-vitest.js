@@ -31,5 +31,3 @@ globalThis.fetch = vi.fn().mockResolvedValue({
   json: async () => ({}),
   text: async () => '',
 });
-
-

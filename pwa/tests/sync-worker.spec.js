@@ -27,7 +27,9 @@ const sendToWorker = async (type, payload, id = 'test-id') => {
 
 /** Return all calls to postMessage matching a given type. */
 const messagesOfType = (type) =>
-  mockPostMessage.mock.calls.map(([msg]) => msg).filter((msg) => msg.type === type);
+  mockPostMessage.mock.calls
+    .map(([msg]) => msg)
+    .filter((msg) => msg.type === type);
 
 // ============================================================================
 // THE TRIALS — Phase 5.0 RPC Contract
@@ -58,7 +60,10 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
     expect(mockDb.exec).toHaveBeenCalledWith(
       expect.stringContaining('CREATE TABLE IF NOT EXISTS bookmarks')
     );
-    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'INIT_SUCCESS', id: 'test-id' });
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'INIT_SUCCESS',
+      id: 'test-id',
+    });
   });
 
   // ── RPC_SQL_QUERY ─────────────────────────────────────────────────────────
@@ -70,10 +75,17 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
     const fakeRows = [{ href: 'https://a.com', description: 'A' }];
     mockDb.exec.mockReturnValueOnce(fakeRows);
 
-    await sendToWorker('RPC_SQL_QUERY', { sql: 'SELECT * FROM bookmarks', bind: [] });
+    await sendToWorker('RPC_SQL_QUERY', {
+      sql: 'SELECT * FROM bookmarks',
+      bind: [],
+    });
 
     expect(mockDb.exec).toHaveBeenCalledWith(
-      expect.objectContaining({ sql: 'SELECT * FROM bookmarks', returnValue: 'resultRows', rowMode: 'object' })
+      expect.objectContaining({
+        sql: 'SELECT * FROM bookmarks',
+        returnValue: 'resultRows',
+        rowMode: 'object',
+      })
     );
     expect(mockPostMessage).toHaveBeenCalledWith({
       type: 'RPC_SUCCESS',
@@ -86,7 +98,9 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
     await sendToWorker('INIT', { dbName: '/test.db' });
     mockPostMessage.mockClear();
 
-    mockDb.exec.mockImplementationOnce(() => { throw new Error('no such table: bookmarks'); });
+    mockDb.exec.mockImplementationOnce(() => {
+      throw new Error('no such table: bookmarks');
+    });
 
     await sendToWorker('RPC_SQL_QUERY', { sql: 'SELECT * FROM bookmarks' });
 
@@ -109,18 +123,27 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
     });
 
     expect(mockDb.exec).toHaveBeenCalledWith(
-      expect.objectContaining({ sql: expect.stringContaining('UPDATE bookmarks') })
+      expect.objectContaining({
+        sql: expect.stringContaining('UPDATE bookmarks'),
+      })
     );
-    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'RPC_SUCCESS', id: 'test-id' });
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'RPC_SUCCESS',
+      id: 'test-id',
+    });
   });
 
   it('RPC_SQL_EXEC: posts RPC_ERROR with SQL_ERROR code on DB exception', async () => {
     await sendToWorker('INIT', { dbName: '/test.db' });
     mockPostMessage.mockClear();
 
-    mockDb.exec.mockImplementationOnce(() => { throw new Error('UNIQUE constraint failed'); });
+    mockDb.exec.mockImplementationOnce(() => {
+      throw new Error('UNIQUE constraint failed');
+    });
 
-    await sendToWorker('RPC_SQL_EXEC', { sql: 'INSERT INTO bookmarks VALUES (?)' });
+    await sendToWorker('RPC_SQL_EXEC', {
+      sql: 'INSERT INTO bookmarks VALUES (?)',
+    });
 
     expect(mockPostMessage).toHaveBeenCalledWith({
       type: 'RPC_ERROR',
@@ -136,8 +159,14 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
     mockPostMessage.mockClear();
 
     const stmts = [
-      { sql: 'DELETE FROM bookmarks WHERE href = ?', bind: ['https://ghost.com'] },
-      { sql: 'DELETE FROM bookmarks WHERE href = ?', bind: ['https://ghost2.com'] },
+      {
+        sql: 'DELETE FROM bookmarks WHERE href = ?',
+        bind: ['https://ghost.com'],
+      },
+      {
+        sql: 'DELETE FROM bookmarks WHERE href = ?',
+        bind: ['https://ghost2.com'],
+      },
     ];
     await sendToWorker('RPC_SQL_TRANSACTION', stmts);
 
@@ -145,16 +174,23 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
     expect(mockDb.exec).toHaveBeenCalledWith(
       expect.objectContaining({ sql: 'DELETE FROM bookmarks WHERE href = ?' })
     );
-    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'RPC_SUCCESS', id: 'test-id' });
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'RPC_SUCCESS',
+      id: 'test-id',
+    });
   });
 
   it('RPC_SQL_TRANSACTION: posts RPC_ERROR on failure and transaction is aborted', async () => {
     await sendToWorker('INIT', { dbName: '/test.db' });
     mockPostMessage.mockClear();
 
-    mockDb.transaction.mockImplementationOnce(() => { throw new Error('disk I/O error'); });
+    mockDb.transaction.mockImplementationOnce(() => {
+      throw new Error('disk I/O error');
+    });
 
-    await sendToWorker('RPC_SQL_TRANSACTION', [{ sql: 'DELETE FROM bookmarks' }]);
+    await sendToWorker('RPC_SQL_TRANSACTION', [
+      { sql: 'DELETE FROM bookmarks' },
+    ]);
 
     expect(mockPostMessage).toHaveBeenCalledWith({
       type: 'RPC_ERROR',
@@ -245,14 +281,30 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
     mockPostMessage.mockClear();
 
     // Trigger errors on all three SQL RPC types
-    mockDb.exec.mockImplementation(() => { throw new Error('boom'); });
-    mockDb.transaction.mockImplementation(() => { throw new Error('boom'); });
+    mockDb.exec.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    mockDb.transaction.mockImplementation(() => {
+      throw new Error('boom');
+    });
     global.fetch.mockRejectedValue(new Error('offline'));
 
-    await sendToWorker('RPC_SQL_QUERY',       { sql: 'SELECT 1' },           'id-q');
-    await sendToWorker('RPC_SQL_EXEC',         { sql: 'INSERT INTO x VALUES(1)' }, 'id-e');
-    await sendToWorker('RPC_SQL_TRANSACTION',  [{ sql: 'DELETE FROM x' }],   'id-t');
-    await sendToWorker('RPC_FETCH', { proxyUrl: 'https://p.com', path: '/x', params: {} }, 'id-f');
+    await sendToWorker('RPC_SQL_QUERY', { sql: 'SELECT 1' }, 'id-q');
+    await sendToWorker(
+      'RPC_SQL_EXEC',
+      { sql: 'INSERT INTO x VALUES(1)' },
+      'id-e'
+    );
+    await sendToWorker(
+      'RPC_SQL_TRANSACTION',
+      [{ sql: 'DELETE FROM x' }],
+      'id-t'
+    );
+    await sendToWorker(
+      'RPC_FETCH',
+      { proxyUrl: 'https://p.com', path: '/x', params: {} },
+      'id-f'
+    );
 
     const errors = messagesOfType('RPC_ERROR');
     expect(errors).toHaveLength(4);
@@ -289,7 +341,10 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
 
     expect(mockDb.transaction).toHaveBeenCalled();
     expect(mockPostMessage).toHaveBeenCalledWith({ type: 'REFRESH_REQUIRED' });
-    expect(mockPostMessage).toHaveBeenCalledWith({ type: 'EXEC_SUCCESS', id: 'test-id' });
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: 'EXEC_SUCCESS',
+      id: 'test-id',
+    });
   });
 
   // ── START_HYDRATION ────────────────────────────────────────────────────────
@@ -316,10 +371,14 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
       text: async () => JSON.stringify(mockBookmarks),
     });
 
-    await sendToWorker('START_HYDRATION', {
-      proxyUrl: 'https://proxy.example.com',
-      authToken: 'test-token',
-    }, 'hb-hydrate');
+    await sendToWorker(
+      'START_HYDRATION',
+      {
+        proxyUrl: 'https://proxy.example.com',
+        authToken: 'test-token',
+      },
+      'hb-hydrate'
+    );
 
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining('/posts/all')
@@ -353,10 +412,14 @@ describe('Pingolin Worker: Phase 5.0 Dumb Muscle RPC Tests', () => {
       text: async () => 'Internal Server Error',
     });
 
-    await sendToWorker('START_HYDRATION', {
-      proxyUrl: 'https://proxy.example.com',
-      authToken: 'test-token',
-    }, 'hb-hydrate');
+    await sendToWorker(
+      'START_HYDRATION',
+      {
+        proxyUrl: 'https://proxy.example.com',
+        authToken: 'test-token',
+      },
+      'hb-hydrate'
+    );
 
     const errorMsgs = messagesOfType('RPC_ERROR');
     expect(errorMsgs).toHaveLength(1);

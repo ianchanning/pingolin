@@ -5,13 +5,19 @@ import fs from 'fs';
 import path from 'path';
 
 test.describe('The Universal Fortress', () => {
-    test.beforeEach(async ({ page }) => {
-    page.on('console', msg => console.log(`[BROWSER] ${msg.type()}: ${msg.text()}`));
-    page.on('pageerror', err => console.log(`[BROWSER ERROR] ${err.message}`));
-    
+  test.beforeEach(async ({ page }) => {
+    page.on('console', (msg) =>
+      console.log(`[BROWSER] ${msg.type()}: ${msg.text()}`)
+    );
+    page.on('pageerror', (err) =>
+      console.log(`[BROWSER ERROR] ${err.message}`)
+    );
+
     // Capture worker console logs and errors explicitly
     page.on('worker', (worker: Worker) => {
-      worker.on('console', msg => console.log(`[WORKER] ${msg.type()}: ${msg.text()}`));
+      worker.on('console', (msg) =>
+        console.log(`[WORKER] ${msg.type()}: ${msg.text()}`)
+      );
       worker.on('close', () => console.log(`[WORKER] Closed: ${worker.url()}`));
     });
 
@@ -19,10 +25,13 @@ test.describe('The Universal Fortress', () => {
     await page.addInitScript(() => {
       (window as any).__outboundRpcLog = [];
       const OriginalWorker = window.Worker;
-      (window as any).Worker = function(scriptURL: string | URL, options?: WorkerOptions) {
+      (window as any).Worker = function (
+        scriptURL: string | URL,
+        options?: WorkerOptions
+      ) {
         const worker = new OriginalWorker(scriptURL, options);
         const originalPost = worker.postMessage.bind(worker);
-        worker.postMessage = function(msg: any) {
+        worker.postMessage = function (msg: any) {
           (window as any).__outboundRpcLog.push(msg);
           return originalPost(msg);
         };
@@ -36,13 +45,15 @@ test.describe('The Universal Fortress', () => {
     if (testInfo.status !== 'passed' && testInfo.status !== 'skipped') return;
 
     // Retrieve the log of all messages sent to the worker during this test
-    const msgs = await page.evaluate<any[]>(() => (window as any).__outboundRpcLog || []);
+    const msgs = await page.evaluate<any[]>(
+      () => (window as any).__outboundRpcLog || []
+    );
 
     // THE UNIVERSAL LAW: Validate every message against the strict RPC contract
     for (const msg of msgs) {
       expect(msg).toHaveProperty('type');
       expect(typeof msg.type).toBe('string');
-      
+
       // All Phase 5.0 messages MUST have an ID for the RPC correlation loop
       expect(msg).toHaveProperty('id');
       expect(typeof msg.id).toBe('string');
@@ -52,14 +63,14 @@ test.describe('The Universal Fortress', () => {
           expect(msg.payload).toMatchObject({
             proxyUrl: expect.any(String),
             path: expect.any(String),
-            params: expect.any(Object) // The precise fix you implemented!
+            params: expect.any(Object), // The precise fix you implemented!
           });
           break;
         case 'RPC_SQL_QUERY':
         case 'RPC_SQL_EXEC':
           expect(msg.payload).toMatchObject({
             sql: expect.any(String),
-            bind: expect.any(Array)
+            bind: expect.any(Array),
           });
           break;
         case 'RPC_SQL_TRANSACTION':
@@ -67,19 +78,19 @@ test.describe('The Universal Fortress', () => {
           if (msg.payload.length > 0) {
             expect(msg.payload[0]).toMatchObject({
               sql: expect.any(String),
-              bind: expect.any(Array)
+              bind: expect.any(Array),
             });
           }
           break;
         case 'START_HYDRATION':
           expect(msg.payload).toMatchObject({
             proxyUrl: expect.any(String),
-            authToken: expect.any(String)
+            authToken: expect.any(String),
           });
           break;
         // ----------------------------------------------------------------
         // THE LEGACY EXEMPTION ZONE (Phase 5.0 Transition)
-        // Accept these without strict schema checks until they are migrated 
+        // Accept these without strict schema checks until they are migrated
         // to pure RPC commands and subsequently deleted.
         // ----------------------------------------------------------------
         case 'GET_POPULAR_TAGS':
@@ -98,9 +109,11 @@ test.describe('The Universal Fortress', () => {
         case 'SET_SYNC_INTERVAL':
         case 'SET_THROTTLE':
         case 'SET_DEBUG_CAP':
-          break; 
+          break;
         default:
-          throw new Error(`[CONTRACT VIOLATION] Unknown message type sent to Worker: ${msg.type}`);
+          throw new Error(
+            `[CONTRACT VIOLATION] Unknown message type sent to Worker: ${msg.type}`
+          );
       }
     }
   });
@@ -114,19 +127,41 @@ test.describe('The Universal Fortress', () => {
     await expect(app.syncButton).toBeVisible();
   });
 
-  test('Scenario 1: The First Awakening (Bootstrap Sync Attempt)', async ({ page }) => {
+  test('Scenario 1: The First Awakening (Bootstrap Sync Attempt)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
 
     // Mock Proxy calls
     await app.mockProxy('/posts/recent', [
-      { href: 'https://example.com/1', description: 'Bookmark 1', tags: 'tag1', time: '2023-10-01T12:00:00Z' },
-      { href: 'https://example.com/2', description: 'Bookmark 2', tags: 'tag2', time: '2023-10-01T12:01:00Z' },
+      {
+        href: 'https://example.com/1',
+        description: 'Bookmark 1',
+        tags: 'tag1',
+        time: '2023-10-01T12:00:00Z',
+      },
+      {
+        href: 'https://example.com/2',
+        description: 'Bookmark 2',
+        tags: 'tag2',
+        time: '2023-10-01T12:01:00Z',
+      },
     ]);
 
     // Mock /posts/all as well since worker.ts currently uses it for hydration
     await app.mockProxy('/posts/all', [
-      { href: 'https://example.com/1', description: 'Bookmark 1', tags: 'tag1', time: '2023-10-01T12:00:00Z' },
-      { href: 'https://example.com/2', description: 'Bookmark 2', tags: 'tag2', time: '2023-10-01T12:01:00Z' },
+      {
+        href: 'https://example.com/1',
+        description: 'Bookmark 1',
+        tags: 'tag1',
+        time: '2023-10-01T12:00:00Z',
+      },
+      {
+        href: 'https://example.com/2',
+        description: 'Bookmark 2',
+        tags: 'tag2',
+        time: '2023-10-01T12:01:00Z',
+      },
     ]);
 
     await app.goto();
@@ -138,26 +173,52 @@ test.describe('The Universal Fortress', () => {
     await expect(list.first()).toContainText('Bookmark 2'); // Sorted by time DESC
   });
 
-  test('Scenario 3: The Punctuation Paradox (Exact Tag Matching)', async ({ page }) => {
+  test('Scenario 3: The Punctuation Paradox (Exact Tag Matching)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
     const dbName = `test-punct-${Math.random().toString(36).substring(7)}.db`;
 
     // Rigorous Data: Testing space-padding and complex delimiters
     const bookmarks = [
-      { href: '1', description: 'Target', tags: 'subject:cs.AI tui', time: '2023-10-01T12:00:00Z' },
-      { href: '2', description: 'False Positive 1', tags: 'subject:cs.AI:ext', time: '2023-10-01T12:01:00Z' },
-      { href: '3', description: 'False Positive 2', tags: 'not:subject:cs.AI', time: '2023-10-01T12:02:00Z' },
-      { href: '4', description: 'Partial Match', tags: 'cs.AI', time: '2023-10-01T12:03:00Z' },
+      {
+        href: '1',
+        description: 'Target',
+        tags: 'subject:cs.AI tui',
+        time: '2023-10-01T12:00:00Z',
+      },
+      {
+        href: '2',
+        description: 'False Positive 1',
+        tags: 'subject:cs.AI:ext',
+        time: '2023-10-01T12:01:00Z',
+      },
+      {
+        href: '3',
+        description: 'False Positive 2',
+        tags: 'not:subject:cs.AI',
+        time: '2023-10-01T12:02:00Z',
+      },
+      {
+        href: '4',
+        description: 'Partial Match',
+        tags: 'cs.AI',
+        time: '2023-10-01T12:03:00Z',
+      },
     ];
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', bookmarks);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T12:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T12:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(4, { timeout: 10000 });
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(4, {
+      timeout: 10000,
+    });
 
     // 1. Perform Exact Tag Search
     await app.search('#subject:cs.AI');
@@ -176,13 +237,18 @@ test.describe('The Universal Fortress', () => {
     await expect(list).not.toContainText('Target');
   });
 
-  test('Scenario 6: The Offline Fortress (Persistence)', async ({ page, context }) => {
+  test('Scenario 6: The Offline Fortress (Persistence)', async ({
+    page,
+    context,
+  }) => {
     const app = new AppPage(page);
     const addForm = new AddForm(page);
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', []);
-    await app.mockProxy('/posts/update', { update_time: new Date().toISOString() });
+    await app.mockProxy('/posts/update', {
+      update_time: new Date().toISOString(),
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await app.goto();
@@ -198,7 +264,11 @@ test.describe('The Universal Fortress', () => {
 
     // 2. Add a bookmark while offline
     await app.toggleAddForm();
-    await addForm.fill('https://offline.com', 'Offline Bookmark', 'offline test');
+    await addForm.fill(
+      'https://offline.com',
+      'Offline Bookmark',
+      'offline test'
+    );
     await addForm.submit();
 
     // 3. Assert immediate local UI update
@@ -217,22 +287,30 @@ test.describe('The Universal Fortress', () => {
     await app.expectOnline();
   });
 
-  test('Scenario 7: The Upstream Flush (Reconnection)', async ({ page, context }) => {
+  test('Scenario 7: The Upstream Flush (Reconnection)', async ({
+    page,
+    context,
+  }) => {
     const app = new AppPage(page);
     const addForm = new AddForm(page);
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', []);
-    await app.mockProxy('/posts/update', { update_time: new Date().toISOString() });
+    await app.mockProxy('/posts/update', {
+      update_time: new Date().toISOString(),
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
     // Mock /posts/add to return raw XML as returned by Pinboard on success
-    await page.context().route(url => url.href.includes('/posts/add'), async (r) => {
-      await r.fulfill({
-        status: 200,
-        contentType: 'text/xml',
-        body: '<result code="done" />',
-      });
-    });
+    await page.context().route(
+      (url) => url.href.includes('/posts/add'),
+      async (r) => {
+        await r.fulfill({
+          status: 200,
+          contentType: 'text/xml',
+          body: '<result code="done" />',
+        });
+      }
+    );
 
     await app.goto();
     await app.login('test:TOKEN');
@@ -260,18 +338,32 @@ test.describe('The Universal Fortress', () => {
 
     // Initial State: 2 bookmarks
     const initialBookmarks = [
-      { href: 'https://a.com', description: 'Apple', tags: 'fruit', time: '2023-10-01T12:00:00Z' },
-      { href: 'https://b.com', description: 'Banana', tags: 'fruit', time: '2023-10-01T12:01:00Z' },
+      {
+        href: 'https://a.com',
+        description: 'Apple',
+        tags: 'fruit',
+        time: '2023-10-01T12:00:00Z',
+      },
+      {
+        href: 'https://b.com',
+        description: 'Banana',
+        tags: 'fruit',
+        time: '2023-10-01T12:01:00Z',
+      },
     ];
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', initialBookmarks);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await app.goto();
     await app.login('test:TOKEN');
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(2, { timeout: 10000 });
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(2, {
+      timeout: 10000,
+    });
 
     // 1. Perform Search for "Apple"
     await app.search('Apple');
@@ -279,8 +371,15 @@ test.describe('The Universal Fortress', () => {
     await expect(page.getByTestId('bookmark-item')).toContainText('Apple');
 
     // 2. Force a sync via ManualRefresh (↻) — the Elm heartbeat must not clear the active search
-    const newBookmark = { href: 'https://c.com', description: 'Cherry', tags: 'fruit', time: '2023-10-01T12:02:00Z' };
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T14:00:00Z' });
+    const newBookmark = {
+      href: 'https://c.com',
+      description: 'Cherry',
+      tags: 'fruit',
+      time: '2023-10-01T12:02:00Z',
+    };
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T14:00:00Z',
+    });
     await app.mockProxy('/posts/all', [newBookmark]);
     await page.getByTitle('Force Sync').click();
 
@@ -296,13 +395,25 @@ test.describe('The Universal Fortress', () => {
     const dbName = `test-deep-${Math.random().toString(36).substring(7)}.db`;
 
     const bookmarks = [
-      { href: 'https://year.com', description: 'Yearly Review', tags: 'year', time: '2023-10-01T12:00:00Z' },
-      { href: 'https://other.com', description: 'Other', tags: 'other', time: '2023-10-01T12:01:00Z' },
+      {
+        href: 'https://year.com',
+        description: 'Yearly Review',
+        tags: 'year',
+        time: '2023-10-01T12:00:00Z',
+      },
+      {
+        href: 'https://other.com',
+        description: 'Other',
+        tags: 'other',
+        time: '2023-10-01T12:01:00Z',
+      },
     ];
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', bookmarks);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     // 1. Initial Load and Login
@@ -327,19 +438,30 @@ test.describe('The Universal Fortress', () => {
 
   // PHASE 5.2: Elm Time.every heartbeat will replace the JS sync loop.
   // Re-enable once the Sovereign State Machine drives the sync cycle.
-  test.skip('Scenario 13: The Heartbeat Ritual (Autosync Verification)', async ({ page }) => {
+  test.skip('Scenario 13: The Heartbeat Ritual (Autosync Verification)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [
-      { href: 'https://pulse.com', description: 'Pulse 1', tags: 'test', time: '2023-10-01T12:00:00Z' }
+      {
+        href: 'https://pulse.com',
+        description: 'Pulse 1',
+        tags: 'test',
+        time: '2023-10-01T12:00:00Z',
+      },
     ]);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T12:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T12:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await app.goto();
     await app.login('test:TOKEN');
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 10000 });
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, {
+      timeout: 10000,
+    });
 
     // 1. Accelerate the heartbeat for testing
     await page.evaluate(() => {
@@ -348,10 +470,17 @@ test.describe('The Universal Fortress', () => {
     });
 
     // 2. Mock a NEW bookmark appearing on the server
-    const newBookmark = { href: 'https://pulse2.com', description: 'Pulse 2', tags: 'test', time: '2023-10-01T12:05:00Z' };
+    const newBookmark = {
+      href: 'https://pulse2.com',
+      description: 'Pulse 2',
+      tags: 'test',
+      time: '2023-10-01T12:05:00Z',
+    };
 
     // We need update_time to change to trigger delta sync
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/all', [newBookmark]);
 
     // 3. Wait for the autosync to trigger and fetch the new bookmark
@@ -361,18 +490,27 @@ test.describe('The Universal Fortress', () => {
     await expect(list.first()).toContainText('Pulse 2');
   });
 
-  test('Scenario 14: The Zombie Database (Self-Healing Sync)', async ({ page }) => {
+  test('Scenario 14: The Zombie Database (Self-Healing Sync)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
     const dbName = `test-zombie-${Math.random().toString(36).substring(7)}.db`;
 
     // 1. Setup a "Zombie" state: Data exists, but NO sync sentinel
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [
-      { href: 'https://zombie.com', description: 'Zombie Bookmark', tags: 'undead', time: '2023-10-01T12:00:00Z' }
+      {
+        href: 'https://zombie.com',
+        description: 'Zombie Bookmark',
+        tags: 'undead',
+        time: '2023-10-01T12:00:00Z',
+      },
     ]);
 
     // We mock /posts/update to see if the app tries to sync after healing
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await page.goto(`/?dbName=${dbName}`);
@@ -385,7 +523,9 @@ test.describe('The Universal Fortress', () => {
     await page.evaluate(async () => {
       const db = (window as any).db;
       // This mimics an interrupted sync where data was written but sentinel wasn't
-      await db.send('EXEC', { sql: "DELETE FROM metadata WHERE key = 'last_full_sync_time'" });
+      await db.send('EXEC', {
+        sql: "DELETE FROM metadata WHERE key = 'last_full_sync_time'",
+      });
       location.reload();
     });
 
@@ -394,7 +534,12 @@ test.describe('The Universal Fortress', () => {
     // We want to ASSERT that the sync loop RECOVERS and fetches updates.
 
     // Mock a NEW bookmark that only a functioning sync loop would catch
-    const revivalBookmark = { href: 'https://revival.com', description: 'Revived!', tags: 'life', time: '2023-10-01T14:00:00Z' };
+    const revivalBookmark = {
+      href: 'https://revival.com',
+      description: 'Revived!',
+      tags: 'life',
+      time: '2023-10-01T14:00:00Z',
+    };
     await app.mockProxy('/posts/all', [revivalBookmark]);
 
     // If the bug exists, the count will stay 1.
@@ -403,13 +548,25 @@ test.describe('The Universal Fortress', () => {
     await app.getBookmarkItem(0).expectTitle('Revived!');
   });
 
-  test('Scenario 15: The Deletion Exorcism (The Dates Hack)', async ({ page }) => {
+  test('Scenario 15: The Deletion Exorcism (The Dates Hack)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
     const dbName = `test-dates-${Math.random().toString(36).substring(7)}.db`;
 
     const date = '2023-10-01';
-    const b1 = { href: 'https://keep.com', description: 'Keep Me', tags: 'test', time: `${date}T12:00:00Z` };
-    const b2 = { href: 'https://delete.com', description: 'Delete Me', tags: 'test', time: `${date}T13:00:00Z` };
+    const b1 = {
+      href: 'https://keep.com',
+      description: 'Keep Me',
+      tags: 'test',
+      time: `${date}T12:00:00Z`,
+    };
+    const b2 = {
+      href: 'https://delete.com',
+      description: 'Delete Me',
+      tags: 'test',
+      time: `${date}T13:00:00Z`,
+    };
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [b1, b2]);
@@ -420,7 +577,9 @@ test.describe('The Universal Fortress', () => {
     // Initial Load: Ingest both bookmarks
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(2, { timeout: 15000 });
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(2, {
+      timeout: 15000,
+    });
 
     // 1. Mock a DELETION on the server
     // /posts/dates will show only 1 bookmark for this date (Local has 2)
@@ -443,37 +602,54 @@ test.describe('The Universal Fortress', () => {
 
   // PHASE 5.4: Tag rename loop moves to Elm pure orchestration.
   // Re-enable once Elm drives the throttled RPC_FETCH chain for /posts/add + /tags/delete.
-  test('Scenario 16: Tag Rename Workaround (Atomic Chain)', async ({ page }) => {
+  test('Scenario 16: Tag Rename Workaround (Atomic Chain)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
     const dbName = `test-rename-${Math.random().toString(36).substring(7)}.db`;
 
-    const bookmark = { href: 'https://rename.com', description: 'Rename Me', tags: 'old-tag other', time: '2023-10-01T12:00:00Z' };
+    const bookmark = {
+      href: 'https://rename.com',
+      description: 'Rename Me',
+      tags: 'old-tag other',
+      time: '2023-10-01T12:00:00Z',
+    };
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [bookmark]);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     // Mocks for the workaround steps
     // Mock /posts/add and /tags/delete to return raw XML as returned by Pinboard on success
-    await page.context().route(url => url.href.includes('/posts/add'), async (r) => {
-      await r.fulfill({
-        status: 200,
-        contentType: 'text/xml',
-        body: '<result code="done" />',
-      });
-    });
-    await page.context().route(url => url.href.includes('/tags/delete'), async (r) => {
-      await r.fulfill({
-        status: 200,
-        contentType: 'text/xml',
-        body: '<result code="done" />',
-      });
-    });
+    await page.context().route(
+      (url) => url.href.includes('/posts/add'),
+      async (r) => {
+        await r.fulfill({
+          status: 200,
+          contentType: 'text/xml',
+          body: '<result code="done" />',
+        });
+      }
+    );
+    await page.context().route(
+      (url) => url.href.includes('/tags/delete'),
+      async (r) => {
+        await r.fulfill({
+          status: 200,
+          contentType: 'text/xml',
+          body: '<result code="done" />',
+        });
+      }
+    );
 
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 10000 });
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, {
+      timeout: 10000,
+    });
 
     // 1. Initiate Rename Workaround
     await page.evaluate(async () => {
@@ -492,14 +668,23 @@ test.describe('The Universal Fortress', () => {
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [
-      { href: 'https://example.com/1', description: 'Existing', tags: 'rust programming', time: '2023-10-01T12:00:00Z' }
+      {
+        href: 'https://example.com/1',
+        description: 'Existing',
+        tags: 'rust programming',
+        time: '2023-10-01T12:00:00Z',
+      },
     ]);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 10000 });
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, {
+      timeout: 10000,
+    });
 
     // 1. Setup Alias: rust -> system
     await page.evaluate(async () => {
@@ -515,7 +700,9 @@ test.describe('The Universal Fortress', () => {
 
     // 3. Assert suggestions include Prefix-matched "rust" and the Alias "system" (on full word)
     const datalist = page.locator('#tag-suggestions');
-    await expect(datalist.locator('option[value$="rust"]')).toBeAttached({ timeout: 10000 });
+    await expect(datalist.locator('option[value$="rust"]')).toBeAttached({
+      timeout: 10000,
+    });
 
     // Type the full word to trigger alias
     await tagsInput.type('st');
@@ -532,7 +719,7 @@ test.describe('The Universal Fortress', () => {
       href: `https://test-${i}.com`,
       description: `Bookmark ${i}`,
       tags: 'scroll test',
-      time: new Date(Date.now() - i * 1000).toISOString()
+      time: new Date(Date.now() - i * 1000).toISOString(),
     }));
 
     await page.evaluate(async (items) => {
@@ -541,18 +728,23 @@ test.describe('The Universal Fortress', () => {
         await window.db.send('LOCAL_UPSERT', item);
       }
       // Ensure "last_full_sync_time" exists to unlock UI
-      await window.db.query("INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?)", [new Date().toISOString()]);
+      await window.db.query(
+        "INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?)",
+        [new Date().toISOString()]
+      );
     }, bookmarks);
 
     await page.reload();
     // Use an auto-retrying expect to wait for the async ritual
-    await expect(app.syncStatus).toHaveText(/Session Restored|Archive Online/, { timeout: 10000 });
+    await expect(app.syncStatus).toHaveText(/Session Restored|Archive Online/, {
+      timeout: 10000,
+    });
 
     const telemetry = await app.syncStatus.innerText();
     console.log(`Telemetry: ${telemetry}`);
 
     const container = page.locator('.archive-scroll-container');
-    const clientHeight = await container.evaluate(el => el.clientHeight);
+    const clientHeight = await container.evaluate((el) => el.clientHeight);
     console.log(`Container clientHeight: ${clientHeight}`);
 
     // 2. Assert that DOM count is small (viewport ~800px, item 120px + buffer = ~15-20 items)
@@ -563,7 +755,7 @@ test.describe('The Universal Fortress', () => {
     await expect(list.first()).toContainText('Bookmark 0');
 
     // 3. Scroll to the middle
-    await container.evaluate(el => el.scrollTop = 120 * 50); // Scroll to item 50
+    await container.evaluate((el) => (el.scrollTop = 120 * 50)); // Scroll to item 50
 
     // Wait for Elm to catch up
     await page.waitForTimeout(500);
@@ -575,8 +767,8 @@ test.describe('The Universal Fortress', () => {
 
     // Bookmark 0 should be gone from the entire list
     const content = await list.allTextContents();
-    const hasBookmark0 = content.some(t => t.includes('Bookmark 0'));
-    const hasBookmark50 = content.some(t => t.includes('Bookmark 50'));
+    const hasBookmark0 = content.some((t) => t.includes('Bookmark 0'));
+    const hasBookmark50 = content.some((t) => t.includes('Bookmark 50'));
 
     expect(hasBookmark0).toBe(false);
     expect(hasBookmark50).toBe(true);
@@ -589,9 +781,22 @@ test.describe('The Universal Fortress', () => {
     // 1. Setup DB with some items
     await page.evaluate(async () => {
       await window.db.debugClearDb(false);
-      await window.db.send('LOCAL_UPSERT', { href: 'https://a.com', description: 'Apple', tags: 'fruit', time: new Date().toISOString() });
-      await window.db.send('LOCAL_UPSERT', { href: 'https://b.com', description: 'Banana', tags: 'fruit', time: new Date().toISOString() });
-      await window.db.query("INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?)", [new Date().toISOString()]);
+      await window.db.send('LOCAL_UPSERT', {
+        href: 'https://a.com',
+        description: 'Apple',
+        tags: 'fruit',
+        time: new Date().toISOString(),
+      });
+      await window.db.send('LOCAL_UPSERT', {
+        href: 'https://b.com',
+        description: 'Banana',
+        tags: 'fruit',
+        time: new Date().toISOString(),
+      });
+      await window.db.query(
+        "INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?)",
+        [new Date().toISOString()]
+      );
     });
 
     await page.reload();
@@ -607,10 +812,12 @@ test.describe('The Universal Fortress', () => {
     const list = page.getByTestId('bookmark-item');
     await expect(list).toHaveCount(2);
     const allText = await list.allTextContents();
-    expect(allText.some(t => t.includes('Banana'))).toBe(true);
+    expect(allText.some((t) => t.includes('Banana'))).toBe(true);
   });
 
-  test('Scenario 20: Safe Recovery from Empty/Invalid Proxy URL', async ({ page }) => {
+  test('Scenario 20: Safe Recovery from Empty/Invalid Proxy URL', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
     const dbName = `test-invalid-proxy-${Math.random().toString(36).substring(7)}.db`;
 
@@ -619,14 +826,14 @@ test.describe('The Universal Fortress', () => {
     await page.evaluate(async () => {
       const db = (window as any).db;
       await db.send('EXEC', {
-        sql: "INSERT INTO metadata (key, value) VALUES ('auth_token', 'test:token'), ('proxy_url', 'undefined') ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+        sql: "INSERT INTO metadata (key, value) VALUES ('auth_token', 'test:token'), ('proxy_url', 'undefined') ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       });
     });
 
     // 2. Reload the page - the worker should restore the session and attempt to check for updates,
     // but because base URL is invalid, it should log a "Ritual Void Failure" instead of throwing an unhandled TypeError.
     const consoleMsgs: string[] = [];
-    page.on('console', msg => {
+    page.on('console', (msg) => {
       consoleMsgs.push(msg.text());
     });
 
@@ -640,12 +847,18 @@ test.describe('The Universal Fortress', () => {
     await page.waitForTimeout(2000);
 
     const hasVoidWarning = consoleMsgs.some(
-      m => m.includes('RPC_ERROR') || m.includes('NETWORK_ERROR') || m.includes('not a valid absolute URL') || m.includes('Ritual Void Failure')
+      (m) =>
+        m.includes('RPC_ERROR') ||
+        m.includes('NETWORK_ERROR') ||
+        m.includes('not a valid absolute URL') ||
+        m.includes('Ritual Void Failure')
     );
     expect(hasVoidWarning).toBe(true);
   });
 
-  test('Scenario 21: Error Status Propagation (HTTP 500/522)', async ({ page }) => {
+  test('Scenario 21: Error Status Propagation (HTTP 500/522)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
     const dbName = `test-err-prop-${Math.random().toString(36).substring(7)}.db`;
 
@@ -658,13 +871,16 @@ test.describe('The Universal Fortress', () => {
     await app.mockProxy('/posts/dates', { dates: {} });
 
     // Mock /posts/update to return 500 Internal Server Error with custom body
-    await page.context().route(url => url.href.includes('/posts/update'), async (r) => {
-      await r.fulfill({
-        status: 500,
-        contentType: 'text/plain',
-        body: 'Cloudflare Proxy Error: 522 Origin Connection Timeout',
-      });
-    });
+    await page.context().route(
+      (url) => url.href.includes('/posts/update'),
+      async (r) => {
+        await r.fulfill({
+          status: 500,
+          contentType: 'text/plain',
+          body: 'Cloudflare Proxy Error: 522 Origin Connection Timeout',
+        });
+      }
+    );
 
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
@@ -674,7 +890,9 @@ test.describe('The Universal Fortress', () => {
     await page.reload();
 
     // We expect the status to reflect the error.
-    await expect(app.syncStatus).toContainText(/Error.*HTTP_500|HTTP 500/, { timeout: 15000 });
+    await expect(app.syncStatus).toContainText(/Error.*HTTP_500|HTTP 500/, {
+      timeout: 15000,
+    });
   });
 
   test('Scenario 22: Remote Tag Edit Ingestion', async ({ page }) => {
@@ -685,11 +903,18 @@ test.describe('The Universal Fortress', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
 
-    const initialBookmark = { href: 'https://edit-tags.com', description: 'Original', tags: 'old-tag', time: '2023-10-01T12:00:00Z' };
+    const initialBookmark = {
+      href: 'https://edit-tags.com',
+      description: 'Original',
+      tags: 'old-tag',
+      time: '2023-10-01T12:00:00Z',
+    };
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [initialBookmark]);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: { '2023-10-01': '1' } });
 
     // 1. Load page and login
@@ -702,8 +927,15 @@ test.describe('The Universal Fortress', () => {
     await item.expectTags(['old-tag']);
 
     // 2. Mock a tag edit on the server and trigger sync via ↻ ManualRefresh
-    const updatedBookmark = { href: 'https://edit-tags.com', description: 'Original', tags: 'new-tag', time: '2023-10-01T12:00:00Z' };
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T14:00:00Z' });
+    const updatedBookmark = {
+      href: 'https://edit-tags.com',
+      description: 'Original',
+      tags: 'new-tag',
+      time: '2023-10-01T12:00:00Z',
+    };
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T14:00:00Z',
+    });
     await app.mockProxy('/posts/all', [updatedBookmark]);
     await page.getByTitle('Force Sync').click();
 
@@ -712,13 +944,17 @@ test.describe('The Universal Fortress', () => {
     await item.expectNotTags(['old-tag']);
   });
 
-  test('Scenario 23: Token Persistence Fallback (Transient Storage)', async ({ page }) => {
+  test('Scenario 23: Token Persistence Fallback (Transient Storage)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
     const dbName = `test-transient-${Math.random().toString(36).substring(7)}.db`;
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', []);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     // 1. Initial Login
@@ -736,7 +972,9 @@ test.describe('The Universal Fortress', () => {
     await page.reload();
 
     // 4. Assert that the session is restored from localStorage fallback
-    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('login-container')).not.toBeVisible({
+      timeout: 15000,
+    });
     await app.expectOnline();
   });
 
@@ -749,58 +987,75 @@ test.describe('The Universal Fortress', () => {
       href: `https://test-${i}.com`,
       description: `Bookmark ${i}`,
       tags: i % 2 === 0 ? 'even' : 'odd',
-      time: `2023-10-01T12:00:${i.toString().padStart(2, '0')}Z`
+      time: `2023-10-01T12:00:${i.toString().padStart(2, '0')}Z`,
     }));
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', bookmarks);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     // 2. Login
     await page.goto(`/?dbName=${dbName}`);
     await app.login('test:TOKEN');
-    await expect(app.syncStatus).toContainText('Archive Online: 15', { timeout: 10000 });
+    await expect(app.syncStatus).toContainText('Archive Online: 15', {
+      timeout: 10000,
+    });
 
     // 3. Scroll container down
     const scrollContainer = page.locator('.archive-scroll-container');
-    await scrollContainer.evaluate(el => el.scrollTop = 200);
-    
+    await scrollContainer.evaluate((el) => (el.scrollTop = 200));
+
     // Verify physical scrollTop is greater than 0
-    let scrollTop = await scrollContainer.evaluate(el => el.scrollTop);
+    let scrollTop = await scrollContainer.evaluate((el) => el.scrollTop);
     expect(scrollTop).toBeGreaterThan(0);
 
     // 4. Search for "even"
     await app.search('even');
-    
+
     // ScrollTop should reset to 0
-    await expect.poll(async () => {
-      return await scrollContainer.evaluate(el => el.scrollTop);
-    }).toBe(0);
+    await expect
+      .poll(async () => {
+        return await scrollContainer.evaluate((el) => el.scrollTop);
+      })
+      .toBe(0);
 
     // 5. Scroll down again on search results
-    await scrollContainer.evaluate(el => el.scrollTop = 50);
-    scrollTop = await scrollContainer.evaluate(el => el.scrollTop);
+    await scrollContainer.evaluate((el) => (el.scrollTop = 50));
+    scrollTop = await scrollContainer.evaluate((el) => el.scrollTop);
     expect(scrollTop).toBeGreaterThan(0);
 
     // 6. Clear search query
     await app.search('');
-    
+
     // ScrollTop should reset to 0 again
-    await expect.poll(async () => {
-      return await scrollContainer.evaluate(el => el.scrollTop);
-    }).toBe(0);
+    await expect
+      .poll(async () => {
+        return await scrollContainer.evaluate((el) => el.scrollTop);
+      })
+      .toBe(0);
   });
 
-  test('Scenario 25: Debugging Tools and Help Toggle Verification', async ({ page }) => {
+  test('Scenario 25: Debugging Tools and Help Toggle Verification', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
     const dbName = `test-debug-tools-${Math.random().toString(36).substring(7)}.db`;
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [
-      { href: 'https://test-debug.com', description: 'Debug Bookmark', tags: 'debug', time: '2023-10-01T12:00:00Z' }
+      {
+        href: 'https://test-debug.com',
+        description: 'Debug Bookmark',
+        tags: 'debug',
+        time: '2023-10-01T12:00:00Z',
+      },
     ]);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     // 1. Initial Load & Login
@@ -820,7 +1075,9 @@ test.describe('The Universal Fortress', () => {
     await expect(app.loginContainer).toBeVisible();
 
     // Verify it displays the version of the PWA
-    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')
+    );
     const expectedVersion = `v${pkg.version}`;
     const versionTag = page.locator('.version-tag');
     await expect(versionTag).toBeVisible();
@@ -832,14 +1089,18 @@ test.describe('The Universal Fortress', () => {
 
     // 3. Verify window.db is exposed and works
     const dbResult = await page.evaluate(async () => {
-      return await (window as any).db.query("SELECT description FROM bookmarks WHERE tags = 'debug'");
+      return await (window as any).db.query(
+        "SELECT description FROM bookmarks WHERE tags = 'debug'"
+      );
     });
     expect(dbResult).toEqual([{ description: 'Debug Bookmark' }]);
 
     // 4. Verify refreshApp() works
     // Let's modify the local database manually and verify refreshApp pulls updates
     await page.evaluate(async () => {
-      await (window as any).db.query("UPDATE bookmarks SET description = 'Refreshed' WHERE tags = 'debug'");
+      await (window as any).db.query(
+        "UPDATE bookmarks SET description = 'Refreshed' WHERE tags = 'debug'"
+      );
       await (window as any).refreshApp();
     });
     const reloadedItem = app.getBookmarkItem(0);
@@ -849,7 +1110,9 @@ test.describe('The Universal Fortress', () => {
     // We register the mock for initial boot again because it will reload the page
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', []);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await page.evaluate(async () => {
@@ -860,15 +1123,24 @@ test.describe('The Universal Fortress', () => {
     await expect(app.loginContainer).toBeVisible({ timeout: 15000 });
   });
 
-  test('Scenario 26: RPC Error Recovery (Resilient Propagation)', async ({ page }) => {
+  test('Scenario 26: RPC Error Recovery (Resilient Propagation)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
     const dbName = `test-err-recovery-${Math.random().toString(36).substring(7)}.db`;
 
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', [
-      { href: 'https://test-err.com', description: 'Err Bookmark', tags: 'err', time: '2023-10-01T12:00:00Z' }
+      {
+        href: 'https://test-err.com',
+        description: 'Err Bookmark',
+        tags: 'err',
+        time: '2023-10-01T12:00:00Z',
+      },
     ]);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T13:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     // 1. Initial Load & Login
@@ -877,20 +1149,25 @@ test.describe('The Universal Fortress', () => {
     await app.expectBookmarkCount(1, { timeout: 10000 });
 
     // 2. Simulate proxy failure by routing /posts/update to return 500 error
-    await page.context().route(url => url.href.includes('/posts/update'), async (route) => {
-      await route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ message: 'Internal Server Error' })
-      });
-    });
+    await page.context().route(
+      (url) => url.href.includes('/posts/update'),
+      async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Internal Server Error' }),
+        });
+      }
+    );
 
     // 3. Click Force Sync to trigger sync check
     await page.getByTitle('Force Sync').click();
 
     // 4. Verify sync status surfaces the error contract properly
     const syncStatus = page.getByTestId('sync-status');
-    await expect(syncStatus).toContainText('Error (HTTP_500)', { timeout: 10000 });
+    await expect(syncStatus).toContainText('Error (HTTP_500)', {
+      timeout: 10000,
+    });
 
     // 5. Verify the app remains usable and doesn't freeze/go blank
     await page.locator('#toggle-add-btn').click();
@@ -901,29 +1178,33 @@ test.describe('The Universal Fortress', () => {
     await app.expectBookmarkCount(1);
   });
 
-  test('Scenario 27: The Cache-Busting Offline Trap (Worker Assassination)', async ({ page }) => {
+  test('Scenario 27: The Cache-Busting Offline Trap (Worker Assassination)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
 
     // 1. Initial Load: Boot the app.
     await app.goto('/');
-    
+
     // 2. Guarantee the SW is active and controlling the page.
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
       // Brief pause to ensure clients.claim() has taken full effect
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 500));
     });
 
-    // 3. Second Load: Now the SW is in control. 
+    // 3. Second Load: Now the SW is in control.
     // It intercepts `sync-worker.js?v=1` and caches it via Strategy B.
     await page.reload();
     await expect(app.loginContainer).toBeVisible();
 
     // 4. The Assassination: We intercept the exact worker request and kill it.
     // This forces the Service Worker into the `.catch()` block.
-    await page.route('**/sync-worker.js*', route => {
-      console.log(`[TEST] Forcing network failure for: ${route.request().url()}`);
-      route.abort('failed'); 
+    await page.route('**/sync-worker.js*', (route) => {
+      console.log(
+        `[TEST] Forcing network failure for: ${route.request().url()}`
+      );
+      route.abort('failed');
     });
 
     // 5. The Trigger: Reload. app.js asks for `sync-worker.js?v=2`.
@@ -935,31 +1216,38 @@ test.describe('The Universal Fortress', () => {
     // Because the worker never boots, Elm never receives INIT_SUCCESS.
     // The UI should be permanently stuck on the initial state.
     const statusText = page.getByTestId('sync-status');
-    
+
     // If the bug is ACTIVE, the status will never change from the initial state.
     // Note: We use a short timeout because we EXPECT it to be stuck.
-    await expect(statusText).toContainText('Awakening Ritual...', { timeout: 3000 });
+    await expect(statusText).toContainText('Awakening Ritual...', {
+      timeout: 3000,
+    });
 
     // (Once we fix the bug, we will change this assertion to expect the login container or online status!)
   });
 
-  test('Scenario 28: The Boundary Contract (Elm -> Worker JSON Verification)', async ({ page }) => {
+  test('Scenario 28: The Boundary Contract (Elm -> Worker JSON Verification)', async ({
+    page,
+  }) => {
     const app = new AppPage(page);
 
     // 1. The Wiretap: Inject a script to hijack the Web Worker API before Elm boots.
     await page.addInitScript(() => {
       (window as any).__interceptedWorkerMessages = [];
       const OriginalWorker = window.Worker;
-      
+
       // Explicitly define the parameters to appease the TypeScript compiler.
       // The Worker constructor takes a URL and an optional WorkerOptions object.
-      (window as any).Worker = function(scriptURL: string | URL, options?: WorkerOptions) {
+      (window as any).Worker = function (
+        scriptURL: string | URL,
+        options?: WorkerOptions
+      ) {
         // Now we pass them cleanly, without the chaotic spread operator.
         const worker = new OriginalWorker(scriptURL, options);
         const originalPost = worker.postMessage.bind(worker);
-        
+
         // Intercept all outgoing messages from Elm
-        worker.postMessage = function(msg: any) {
+        worker.postMessage = function (msg: any) {
           (window as any).__interceptedWorkerMessages.push(msg);
           return originalPost(msg);
         };
@@ -970,7 +1258,9 @@ test.describe('The Universal Fortress', () => {
     // 2. Boot the app and trigger the network
     await app.mockProxy('/posts/recent', []);
     await app.mockProxy('/posts/all', []);
-    await app.mockProxy('/posts/update', { update_time: '2023-10-01T12:00:00Z' });
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T12:00:00Z',
+    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await app.goto('/?dbName=test-contract.db');
@@ -1004,15 +1294,17 @@ test.describe('The Universal Fortress', () => {
     const msgs = await page.evaluate<OutboundWorkerMessage[]>(() => {
       return (window as any).__interceptedWorkerMessages;
     });
-    
+
     // 4. THE CONTRACT ASSERTION
     // Use a TypeScript Type Guard `(m): m is RpcFetchMessage` in the filter.
     // This tells the TS Compiler: "If this returns true, treat 'm' exactly as an RpcFetchMessage!"
-    const rpcFetchMsgs = msgs.filter((m): m is RpcFetchMessage => m.type === 'RPC_FETCH');
+    const rpcFetchMsgs = msgs.filter(
+      (m): m is RpcFetchMessage => m.type === 'RPC_FETCH'
+    );
     expect(rpcFetchMsgs.length).toBeGreaterThan(0);
 
     const fetchMsg = rpcFetchMsgs[0];
-    
+
     // Now TypeScript provides full autocomplete and safety here!
     // It KNOWS payload.params exists and is a Record<string, string>.
     expect(fetchMsg).toMatchObject({
@@ -1021,11 +1313,10 @@ test.describe('The Universal Fortress', () => {
       payload: {
         proxyUrl: expect.any(String),
         path: expect.any(String),
-        params: expect.any(Object)
-      }
+        params: expect.any(Object),
+      },
     });
 
     expect(fetchMsg.payload.params).toHaveProperty('auth_token');
   });
 });
-
