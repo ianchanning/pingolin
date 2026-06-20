@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 
 test.describe('The Universal Fortress', () => {
-  test.beforeEach(async ({ page }) => {
+    test.beforeEach(async ({ page }) => {
     page.on('console', msg => console.log(`[BROWSER] ${msg.type()}: ${msg.text()}`));
     page.on('pageerror', err => console.log(`[BROWSER ERROR] ${err.message}`));
     
@@ -14,6 +14,95 @@ test.describe('The Universal Fortress', () => {
       worker.on('console', msg => console.log(`[WORKER] ${msg.type()}: ${msg.text()}`));
       worker.on('close', () => console.log(`[WORKER] Closed: ${worker.url()}`));
     });
+
+    // THE OMNISCIENT WIRETAP: Injected before every single test
+    await page.addInitScript(() => {
+      (window as any).__outboundRpcLog = [];
+      const OriginalWorker = window.Worker;
+      (window as any).Worker = function(scriptURL: string | URL, options?: WorkerOptions) {
+        const worker = new OriginalWorker(scriptURL, options);
+        const originalPost = worker.postMessage.bind(worker);
+        worker.postMessage = function(msg: any) {
+          (window as any).__outboundRpcLog.push(msg);
+          return originalPost(msg);
+        };
+        return worker;
+      };
+    });
+  });
+
+  test.afterEach(async ({ page }, testInfo) => {
+    // If the test already failed for UI reasons, don't clutter the logs
+    if (testInfo.status !== 'passed' && testInfo.status !== 'skipped') return;
+
+    // Retrieve the log of all messages sent to the worker during this test
+    const msgs = await page.evaluate<any[]>(() => (window as any).__outboundRpcLog || []);
+
+    // THE UNIVERSAL LAW: Validate every message against the strict RPC contract
+    for (const msg of msgs) {
+      expect(msg).toHaveProperty('type');
+      expect(typeof msg.type).toBe('string');
+      
+      // All Phase 5.0 messages MUST have an ID for the RPC correlation loop
+      expect(msg).toHaveProperty('id');
+      expect(typeof msg.id).toBe('string');
+
+      switch (msg.type) {
+        case 'RPC_FETCH':
+          expect(msg.payload).toMatchObject({
+            proxyUrl: expect.any(String),
+            path: expect.any(String),
+            params: expect.any(Object) // The precise fix you implemented!
+          });
+          break;
+        case 'RPC_SQL_QUERY':
+        case 'RPC_SQL_EXEC':
+          expect(msg.payload).toMatchObject({
+            sql: expect.any(String),
+            bind: expect.any(Array)
+          });
+          break;
+        case 'RPC_SQL_TRANSACTION':
+          expect(Array.isArray(msg.payload)).toBe(true);
+          if (msg.payload.length > 0) {
+            expect(msg.payload[0]).toMatchObject({
+              sql: expect.any(String),
+              bind: expect.any(Array)
+            });
+          }
+          break;
+        case 'START_HYDRATION':
+          expect(msg.payload).toMatchObject({
+            proxyUrl: expect.any(String),
+            authToken: expect.any(String)
+          });
+          break;
+        // ----------------------------------------------------------------
+        // THE LEGACY EXEMPTION ZONE (Phase 5.0 Transition)
+        // Accept these without strict schema checks until they are migrated 
+        // to pure RPC commands and subsequently deleted.
+        // ----------------------------------------------------------------
+        case 'GET_POPULAR_TAGS':
+        case 'CHECK_FOR_UPDATES':
+        case 'QUERY_ALL':
+        case 'QUERY_SEARCH':
+        case 'LOCAL_UPSERT':
+        case 'LOCAL_DELETE':
+        case 'INIT':
+        case 'DEBUG_CLEAR_DB':
+        case 'EXEC':
+        case 'QUERY':
+        case 'UPSERT_TAG_ALIAS':
+        case 'RENAME_TAG':
+        case 'START_SYNC_LOOP':
+        case 'SET_SYNC_INTERVAL':
+        case 'SET_THROTTLE':
+        case 'SET_DEBUG_CAP':
+          break; 
+        default:
+          throw new Error(`[CONTRACT VIOLATION] Unknown message type sent to Worker: ${msg.type}`);
+      }
+    }
   });
 
   test('Smoke Test: App Loads and shows Login', async ({ page }) => {
