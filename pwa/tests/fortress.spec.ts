@@ -853,5 +853,90 @@ test.describe('The Universal Fortress', () => {
 
     // (Once we fix the bug, we will change this assertion to expect the login container or online status!)
   });
+
+  test('Scenario 28: The Boundary Contract (Elm -> Worker JSON Verification)', async ({ page }) => {
+    const app = new AppPage(page);
+
+    // 1. The Wiretap: Inject a script to hijack the Web Worker API before Elm boots.
+    await page.addInitScript(() => {
+      (window as any).__interceptedWorkerMessages = [];
+      const OriginalWorker = window.Worker;
+      
+      // Explicitly define the parameters to appease the TypeScript compiler.
+      // The Worker constructor takes a URL and an optional WorkerOptions object.
+      (window as any).Worker = function(scriptURL: string | URL, options?: WorkerOptions) {
+        // Now we pass them cleanly, without the chaotic spread operator.
+        const worker = new OriginalWorker(scriptURL, options);
+        const originalPost = worker.postMessage.bind(worker);
+        
+        // Intercept all outgoing messages from Elm
+        worker.postMessage = function(msg: any) {
+          (window as any).__interceptedWorkerMessages.push(msg);
+          return originalPost(msg);
+        };
+        return worker;
+      };
+    });
+
+    // 2. Boot the app and trigger the network
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', []);
+    await app.mockProxy('/posts/update', { update_time: '2023-10-01T12:00:00Z' });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    await app.goto('/?dbName=test-contract.db');
+    await app.login('test:TOKEN');
+
+    // Trigger a manual heartbeat to force an RPC_FETCH
+    await page.getByTitle('Force Sync').click();
+    await page.waitForTimeout(500); // Give Elm a moment to dispatch the Cmd
+
+    // Define the strict shapes of the RPC Contract
+    interface RpcFetchMessage {
+      type: 'RPC_FETCH';
+      id: string;
+      payload: {
+        proxyUrl: string;
+        path: string;
+        params: Record<string, string>;
+      };
+    }
+
+    interface GenericWorkerMessage {
+      type: string;
+      id?: string;
+      payload?: any;
+    }
+
+    // A Union Type representing everything Elm can send
+    type OutboundWorkerMessage = RpcFetchMessage | GenericWorkerMessage;
+
+    // 3. Extract the wiretapped messages, explicitly typing the bridge output
+    const msgs = await page.evaluate<OutboundWorkerMessage[]>(() => {
+      return (window as any).__interceptedWorkerMessages;
+    });
+    
+    // 4. THE CONTRACT ASSERTION
+    // Use a TypeScript Type Guard `(m): m is RpcFetchMessage` in the filter.
+    // This tells the TS Compiler: "If this returns true, treat 'm' exactly as an RpcFetchMessage!"
+    const rpcFetchMsgs = msgs.filter((m): m is RpcFetchMessage => m.type === 'RPC_FETCH');
+    expect(rpcFetchMsgs.length).toBeGreaterThan(0);
+
+    const fetchMsg = rpcFetchMsgs[0];
+    
+    // Now TypeScript provides full autocomplete and safety here!
+    // It KNOWS payload.params exists and is a Record<string, string>.
+    expect(fetchMsg).toMatchObject({
+      type: 'RPC_FETCH',
+      id: expect.any(String),
+      payload: {
+        proxyUrl: expect.any(String),
+        path: expect.any(String),
+        params: expect.any(Object)
+      }
+    });
+
+    expect(fetchMsg.payload.params).toHaveProperty('auth_token');
+  });
 });
 
