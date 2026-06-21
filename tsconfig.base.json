@@ -6,7 +6,7 @@
        compatibility with the actual ESM specification.
        https://www.totaltypescript.com/concepts/module-resolution
     */
-    "target": "ESNext", 
+    "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ESNext"],
@@ -36,16 +36,16 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "isolatedModules": true, 
-    
+    "isolatedModules": true,
+
     /* 
        REFERENCE: Scaling Monorepos.
        'composite' enables Project References, allowing TypeScript to 
        build the project in chunks rather than one giant blob.
        https://www.totaltypescript.com/concepts/project-references
     */
-    "composite": true, 
-    "declaration": true, 
+    "composite": true,
+    "declaration": true,
     "declarationMap": true
   }
 }
