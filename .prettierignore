@@ -10,6 +10,8 @@ pwa/public/vendor/
 
 # Build artifacts & Generated files
 pwa/public/version.js
+pwa/public/main.js
+pwa/public/sync-worker.js
 dist/
 build/
 
