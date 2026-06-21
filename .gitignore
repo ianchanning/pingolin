@@ -11,3 +11,23 @@ pwa/dist/
 *.db-wal
 .aider*
 pwa/test-results/
+
+# uv ignores
+# ----------
+
+# uv virtual environment
+.venv/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Project specific
+logs/
+.env
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
