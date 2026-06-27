@@ -1539,6 +1539,9 @@ test.describe('The Universal Fortress', () => {
       localStorage.setItem('pingolin_hydrated', 'true');
     });
 
+    // Clear any routes registered by prior tests in this context before seeding
+    await page.context().unroute((url) => url.href.includes('pinboard.net/api'));
+
     // Intercept all Pinboard API calls during seeding — return empty/stable mocks
     await page.context().route(
       (url) => url.href.includes('pinboard.net/api'),
@@ -1572,13 +1575,27 @@ test.describe('The Universal Fortress', () => {
 
     // Seed the metadata row directly via window.db (DatabaseBridge exposed by app.js).
     // This simulates what a real completed sync would have written to the DB.
-    // window.db.send() handles the promise/message-listener boilerplate cleanly.
-    await page.evaluate(async (lastSync) => {
+    const seededValue = await page.evaluate(async (lastSync) => {
+      // Write the anchor
       await (window as any).db.send('RPC_SQL_EXEC', {
         sql: "INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?), ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         bind: [lastSync, lastSync],
       });
+      // Read it back to confirm the write landed in OPFS
+      const rows = await (window as any).db.send('QUERY', {
+        sql: "SELECT value FROM metadata WHERE key = 'last_full_sync_time'",
+        bind: [],
+      });
+      return rows?.[0]?.value ?? null;
     }, KNOWN_LAST_SYNC);
+
+    // Guard: if the write didn't land, the test setup itself is broken
+    if (seededValue !== KNOWN_LAST_SYNC) {
+      throw new Error(
+        `[Scenario 30 Setup] Metadata write failed! Expected "${KNOWN_LAST_SYNC}", ` +
+        `got "${seededValue}". The window.db bridge may not be reaching the correct worker.`
+      );
+    }
 
     // ── Phase 2: Cold boot — verify SESSION_RESTORED carries the DB value ──
     // Ensure the app.js localStorage bypass is NOT active — real worker path only.
