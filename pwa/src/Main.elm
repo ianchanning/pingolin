@@ -844,11 +844,13 @@ handleDeltaFetchResult maybePayload model =
                 |> Maybe.withDefault []
     in
     if List.isEmpty bookmarks then
-        -- No new bookmarks, just update the metadata last_sync_time and finalize
+        -- No new bookmarks, just update BOTH metadata keys and finalize.
+        -- last_full_sync_time must also advance so the next cold boot SESSION_RESTORED
+        -- carries the new anchor (prevents perpetual re-delta from the original date).
         let
             txStmts =
-                [ ( "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
-                  , [ Encode.string model.lastSyncTime ]
+                [ ( "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?), ('last_full_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+                  , [ Encode.string model.lastSyncTime, Encode.string model.lastSyncTime ]
                   )
                 ]
         in
@@ -871,8 +873,9 @@ handleDeltaFetchResult maybePayload model =
                 List.map toSql bookmarks
 
             metaStmt =
-                ( "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
-                , [ Encode.string model.lastSyncTime ]
+                -- Update both keys so cold boot SESSION_RESTORED carries the new anchor.
+                ( "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?), ('last_full_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+                , [ Encode.string model.lastSyncTime, Encode.string model.lastSyncTime ]
                 )
 
             txStmts =

@@ -438,55 +438,91 @@ test.describe('The Universal Fortress', () => {
 
   // PHASE 5.2: Elm Time.every heartbeat will replace the JS sync loop.
   // Re-enable once the Sovereign State Machine drives the sync cycle.
-  test.skip('Scenario 13: The Heartbeat Ritual (Autosync Verification)', async ({
+  test('Scenario 13: The Heartbeat Ritual (Autosync Verification)', async ({
     page,
   }) => {
-    const app = new AppPage(page);
+    // ── Purpose ────────────────────────────────────────────────────────────────
+    // Verifies that the automatic heartbeat (Time.every 60s in Main.elm) picks up
+    // a new bookmark from the server WITHOUT the user clicking refresh.
+    //
+    // Previously skipped because the old window.sync.setInterval() API was deleted
+    // when the JS timer was replaced with Elm-native Time.every.
+    //
+    // Fix: use Playwright's page.clock API to synthetically advance the browser
+    // clock past 60 000ms, triggering the Elm Tick subscription and the
+    // hb-update → delta sync cycle — no waiting, no real timers.
+    // ──────────────────────────────────────────────────────────────────────────
 
-    await app.mockProxy('/posts/recent', []);
+    const app = new AppPage(page);
+    const INITIAL_SYNC_TIME = '2023-10-01T12:00:00Z';
+    const SERVER_UPDATE_TIME = '2023-10-01T13:00:00Z'; // ahead → triggers delta
+
+    // Install fake clock BEFORE page load so Elm's setInterval is captured.
+    // We pin the initial time so Date.now() is deterministic.
+    await page.clock.install({ time: new Date(INITIAL_SYNC_TIME).getTime() });
+
+    // Seed mocks: initial state is 1 bookmark, server is "up to date"
+    await app.mockProxy('/posts/update', { update_time: INITIAL_SYNC_TIME });
     await app.mockProxy('/posts/all', [
       {
         href: 'https://pulse.com',
         description: 'Pulse 1',
         tags: 'test',
-        time: '2023-10-01T12:00:00Z',
+        time: INITIAL_SYNC_TIME,
       },
     ]);
-    await app.mockProxy('/posts/update', {
-      update_time: '2023-10-01T12:00:00Z',
-    });
     await app.mockProxy('/posts/dates', { dates: {} });
 
     await app.goto();
     await app.login('test:TOKEN');
+
+    // Wait for the initial sync to complete — 1 bookmark loaded
     await expect(page.getByTestId('bookmark-item')).toHaveCount(1, {
-      timeout: 10000,
+      timeout: 15000,
     });
 
-    // 1. Accelerate the heartbeat for testing
-    await page.evaluate(() => {
-      (window as any).sync.setInterval(2000);
-      (window as any).sync.startLoop();
-    });
+    // A new bookmark appears on the server between heartbeats.
+    // Re-route /posts/update to return the newer time → triggers delta sync.
+    // Re-route /posts/all to return the new bookmark.
+    await page.context().unroute((url) => url.href.includes('/posts/update'));
+    await page.context().route(
+      (url) => url.href.includes('/posts/update'),
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ update_time: SERVER_UPDATE_TIME }),
+        });
+      }
+    );
 
-    // 2. Mock a NEW bookmark appearing on the server
-    const newBookmark = {
-      href: 'https://pulse2.com',
-      description: 'Pulse 2',
-      tags: 'test',
-      time: '2023-10-01T12:05:00Z',
-    };
+    await page.context().unroute((url) => url.href.includes('/posts/all'));
+    await page.context().route(
+      (url) => url.href.includes('/posts/all'),
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              href: 'https://pulse2.com',
+              description: 'Pulse 2',
+              tags: 'test',
+              time: SERVER_UPDATE_TIME,
+            },
+          ]),
+        });
+      }
+    );
 
-    // We need update_time to change to trigger delta sync
-    await app.mockProxy('/posts/update', {
-      update_time: '2023-10-01T13:00:00Z',
-    });
-    await app.mockProxy('/posts/all', [newBookmark]);
+    // Fast-forward 61 seconds — fires the Elm Time.every (60 * 1000) Tick subscription.
+    // This triggers hb-update → /posts/update returns SERVER_UPDATE_TIME →
+    // handleHeartbeatUpdate sees serverTime != lastSyncTime → delta sync fires.
+    await page.clock.fastForward(61_000);
 
-    // 3. Wait for the autosync to trigger and fetch the new bookmark
-    // We expect this to happen automatically within ~10-15s (2s interval + loop overhead)
+    // The new bookmark should now appear automatically — no user action required.
     const list = page.getByTestId('bookmark-item');
-    await expect(list).toHaveCount(2, { timeout: 20000 });
+    await expect(list).toHaveCount(2, { timeout: 10000 });
     await expect(list.first()).toContainText('Pulse 2');
   });
 
@@ -1472,5 +1508,561 @@ test.describe('The Universal Fortress', () => {
       `Delta sync verified: ${pinboardRequestCount} requests, date filter used: ${dateFilterSent}.\n` +
       `UI status at assertion time: "${statusAtEnd}", bookmark count: ${itemsAtEnd}`
     );
+  });
+
+  test('Scenario 30: The DB Session Restore Contract (Cold Boot from OPFS Metadata)', async ({
+    page,
+  }) => {
+    // ── Purpose ────────────────────────────────────────────────────────────────
+    // This test exercises the REAL session restore path: worker reads
+    // last_full_sync_time from OPFS metadata on INIT, not from the
+    // app.js localStorage bypass. This is the critical path changed by the
+    // TS migration (sync-worker.ts line ~237).
+    //
+    // If the metadata key name changed, or the SQL query broke silently,
+    // SESSION_RESTORED would fire with lastSync="" → handleHeartbeatUpdate
+    // would trigger START_HYDRATION (full re-import of 23k links) instead of
+    // the delta sync path. This test catches that regression.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    const KNOWN_LAST_SYNC = '2024-03-15T10:00:00Z';
+    const MOCK_SERVER_TIME = '2024-03-16T09:00:00Z'; // ahead of KNOWN_LAST_SYNC → delta sync
+    const uniqueDb = `test-scenario30-${Date.now()}.db`;
+
+    // ── Phase 1: Bootstrap a fresh DB with known metadata ──────────────────
+    // Navigate to seed the DB, login, then write metadata directly via the
+    // RPC_SQL_EXEC channel so the worker's OPFS file has real persisted state.
+    await page.goto(`http://localhost:5173/?dbName=${uniqueDb}`);
+    await page.evaluate(() => {
+      localStorage.setItem('pingolin_auth_token', 'test:TOKEN');
+      localStorage.setItem('pingolin_proxy_url', 'https://pinboard.net/api');
+      localStorage.setItem('pingolin_hydrated', 'true');
+    });
+
+    // Intercept all Pinboard API calls during seeding — return empty/stable mocks
+    await page.context().route(
+      (url) => url.href.includes('pinboard.net/api'),
+      async (route) => {
+        const url = route.request().url();
+        if (url.includes('/posts/update')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ update_time: KNOWN_LAST_SYNC }),
+          });
+        } else if (url.includes('/posts/dates')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ dates: {} }),
+          });
+        } else {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify([]),
+          });
+        }
+      }
+    );
+
+    // Reload to bootstrap the DB via INIT
+    await page.reload();
+    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+
+    // Seed the metadata row directly via window.db (DatabaseBridge exposed by app.js).
+    // This simulates what a real completed sync would have written to the DB.
+    // window.db.send() handles the promise/message-listener boilerplate cleanly.
+    await page.evaluate(async (lastSync) => {
+      await (window as any).db.send('RPC_SQL_EXEC', {
+        sql: "INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?), ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        bind: [lastSync, lastSync],
+      });
+    }, KNOWN_LAST_SYNC);
+
+    // ── Phase 2: Cold boot — verify SESSION_RESTORED carries the DB value ──
+    // Ensure the app.js localStorage bypass is NOT active — real worker path only.
+    await page.evaluate(() => {
+      localStorage.removeItem('fortress_last_sync_date');
+    });
+
+    // Track outbound RPC messages on the NEXT page load via the wiretap.
+    // If SESSION_RESTORED fires with lastSync="", Elm sends START_HYDRATION.
+    // If it fires with lastSync=KNOWN_LAST_SYNC, Elm sends hb-delta-fetch with fromdt/since.
+    let startHydrationSent = false;
+    let deltaFetchSent = false;
+    let deltaFetchParams: Record<string, string> = {};
+
+    // Update the intercept so /posts/update returns the NEWER server time
+    await page.context().unroute((url) => url.href.includes('pinboard.net/api'));
+    await page.context().route(
+      (url) => url.href.includes('pinboard.net/api'),
+      async (route) => {
+        const url = route.request().url();
+        if (url.includes('/posts/update')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ update_time: MOCK_SERVER_TIME }),
+          });
+        } else if (url.includes('/posts/all')) {
+          // Capture whether fromdt/since params are present
+          const parsedUrl = new URL(url);
+          deltaFetchSent = true;
+          deltaFetchParams = Object.fromEntries(parsedUrl.searchParams.entries());
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify([]),
+          });
+        } else if (url.includes('/posts/dates')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ dates: {} }),
+          });
+        } else {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({}),
+          });
+        }
+      }
+    );
+
+    // Cold boot — NO fortress_last_sync_date in localStorage
+    await page.reload();
+    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+
+    // Inspect the outbound RPC log after boot settles
+    await page.waitForTimeout(3000); // allow heartbeat + delta fetch to complete
+    const msgs = await page.evaluate<any[]>(() => (window as any).__outboundRpcLog || []);
+
+    // ── Assertions ─────────────────────────────────────────────────────────
+
+    // 1. START_HYDRATION must NOT have been sent — that would mean lastSync="" (DB read failed)
+    startHydrationSent = msgs.some((m) => m.type === 'START_HYDRATION');
+    expect(
+      startHydrationSent,
+      'REGRESSION: START_HYDRATION fired — DB metadata read failed, lastSync="" on cold boot!'
+    ).toBe(false);
+
+    // 2. A delta fetch (hb-delta-fetch) MUST have been sent — proves lastSync was restored
+    expect(
+      deltaFetchSent,
+      'REGRESSION: No delta fetch fired — SESSION_RESTORED did not carry lastSync from DB'
+    ).toBe(true);
+
+    // 3. The delta fetch MUST carry the correct date filter from the DB
+    expect(
+      deltaFetchParams['fromdt'] || deltaFetchParams['since'],
+      `REGRESSION: Delta fetch had no date filter. Params were: ${JSON.stringify(deltaFetchParams)}`
+    ).toBe(KNOWN_LAST_SYNC);
+
+    console.log(
+      `Scenario 30 passed: DB session restore verified.\n` +
+      `lastSync restored from OPFS: ${deltaFetchParams['fromdt'] || deltaFetchParams['since']}`
+    );
+  });
+
+  test('Scenario 32: The Metadata Write Contract (Delta Sync Persists New Anchor)', async ({
+    page,
+  }) => {
+    // ── Purpose ────────────────────────────────────────────────────────────────
+    // Companion to Scenario 30. That test proved the READ path; this proves WRITE.
+    //
+    // After a delta sync completes, the new serverTime MUST be persisted to OPFS
+    // so the next cold boot SESSION_RESTORED carries the UPDATED anchor — not the
+    // stale original. Without this, every cold boot re-triggers the same delta
+    // sync from the original date (infinite repeated work).
+    //
+    // The bug vector: Main.elm delta sync transaction writes 'last_sync_time' but
+    // sync-worker.ts INIT reads 'last_full_sync_time'. If these stay mismatched,
+    // SESSION_RESTORED always sends the old anchor → perpetual delta loop.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    const ORIGINAL_SYNC = '2024-03-15T10:00:00Z';
+    const SERVER_TIME   = '2024-06-01T00:00:00Z'; // newer → triggers delta
+    const uniqueDb = `test-scenario32-${Date.now()}.db`;
+
+    // ── Phase 1: Seed DB with a known last_full_sync_time ──────────────────
+    await page.goto(`http://localhost:5173/?dbName=${uniqueDb}`);
+    await page.evaluate(() => {
+      localStorage.setItem('pingolin_auth_token', 'test:TOKEN');
+      localStorage.setItem('pingolin_proxy_url', 'https://pinboard.net/api');
+      localStorage.setItem('pingolin_hydrated', 'true');
+    });
+
+    await page.context().route(
+      (url) => url.href.includes('pinboard.net/api'),
+      async (route) => {
+        const url = route.request().url();
+        if (url.includes('/posts/update')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            // Phase 1: server matches original — no delta triggered yet
+            body: JSON.stringify({ update_time: ORIGINAL_SYNC }),
+          });
+        } else if (url.includes('/posts/dates')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ dates: {} }),
+          });
+        } else {
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+        }
+      }
+    );
+
+    await page.reload();
+    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+
+    // Seed the original anchor into OPFS metadata
+    await page.evaluate(async (ts) => {
+      await (window as any).db.send('RPC_SQL_EXEC', {
+        sql: "INSERT INTO metadata (key, value) VALUES ('last_full_sync_time', ?), ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        bind: [ts, ts],
+      });
+    }, ORIGINAL_SYNC);
+
+    // ── Phase 2: Trigger a delta sync (server time advanced) ──────────────
+    // Update the mock so /posts/update returns the newer SERVER_TIME.
+    // This drives handleHeartbeatUpdate → delta branch → hb-delta-tx writes
+    // last_sync_time = SERVER_TIME.
+    await page.context().unroute((url) => url.href.includes('pinboard.net/api'));
+    await page.context().route(
+      (url) => url.href.includes('pinboard.net/api'),
+      async (route) => {
+        const url = route.request().url();
+        if (url.includes('/posts/update')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ update_time: SERVER_TIME }),
+          });
+        } else if (url.includes('/posts/all')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify([]), // empty delta — no new bookmarks
+          });
+        } else if (url.includes('/posts/dates')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ dates: {} }),
+          });
+        } else {
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
+        }
+      }
+    );
+
+    // Use the fortress_last_sync_date helper to inject ORIGINAL_SYNC as lastSync
+    // so Elm's model.lastSyncTime starts from our known anchor
+    await page.evaluate((ts) => {
+      localStorage.setItem('fortress_last_sync_date', ts);
+    }, ORIGINAL_SYNC);
+
+    // Reload to run the delta sync cycle
+    await page.reload();
+    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+    // Wait for the delta sync + metadata write to complete
+    await page.waitForTimeout(3000);
+
+    // ── Phase 3: Cold boot — verify SESSION_RESTORED carries SERVER_TIME ──
+    // Strip all localStorage overrides — real DB path only
+    await page.evaluate(() => {
+      localStorage.removeItem('fortress_last_sync_date');
+    });
+
+    let coldBootLastSync = '';
+    let deltaFiredAgain = false;
+
+    await page.context().unroute((url) => url.href.includes('pinboard.net/api'));
+    await page.context().route(
+      (url) => url.href.includes('pinboard.net/api'),
+      async (route) => {
+        const url = route.request().url();
+        if (url.includes('/posts/update')) {
+          // Return SERVER_TIME again — if SESSION_RESTORED correctly carries SERVER_TIME,
+          // then serverTime == lastSyncTime → NO delta, goes to Dates Hack only.
+          // If SESSION_RESTORED carries ORIGINAL_SYNC, serverTime != lastSyncTime → delta fires AGAIN.
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ update_time: SERVER_TIME }),
+          });
+        } else if (url.includes('/posts/all')) {
+          // If this fires, the anchor wasn't updated — the bug is confirmed
+          deltaFiredAgain = true;
+          const parsedUrl = new URL(url);
+          coldBootLastSync = parsedUrl.searchParams.get('fromdt') || parsedUrl.searchParams.get('since') || '';
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify([]),
+          });
+        } else if (url.includes('/posts/dates')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ dates: {} }),
+          });
+        } else {
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
+        }
+      }
+    );
+
+    await page.reload();
+    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+    await page.waitForTimeout(3000);
+
+    // ── Assertions ─────────────────────────────────────────────────────────
+
+    // After a delta sync, the next cold boot must NOT re-trigger a delta.
+    // If deltaFiredAgain=true, the anchor wasn't updated → perpetual re-sync bug.
+    expect(
+      deltaFiredAgain,
+      `REGRESSION: Delta sync fired again on cold boot! ` +
+      `The metadata write did not update the session anchor. ` +
+      `Session sent fromdt="${coldBootLastSync}" (should have been "${SERVER_TIME}" → no delta needed)`
+    ).toBe(false);
+
+    console.log(`Scenario 32 passed: Delta sync metadata write verified. Anchor updated to ${SERVER_TIME}.`);
+  });
+
+  test('Scenario 34: The Infinite Loop Prevention Guard (fortress_last_sync_date removeItem)', async ({
+    page,
+  }) => {
+    // ── Purpose ────────────────────────────────────────────────────────────────
+    // Guards the localStorage.removeItem('fortress_last_sync_date') call in app.js.
+    //
+    // The loop: fortress_last_sync_date set → Elm sends hb-update → app.js injects
+    // SESSION_RESTORED → handleSessionRestored immediately fires ANOTHER hb-update →
+    // app.js sees the key again → injects ANOTHER SESSION_RESTORED → ♾️
+    //
+    // The fix: app.js calls removeItem BEFORE injecting SESSION_RESTORED, so the
+    // very next hb-update finds no key and skips the injection.
+    //
+    // If someone reverts the removeItem, hb-update count spirals to 10+ in seconds.
+    // This test catches that with a 4-second observation window.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    const MOCK_LAST_SYNC = '2024-05-01T00:00:00Z';
+    const uniqueDb = `test-scenario34-${Date.now()}.db`;
+
+    // Route ALL Pinboard API calls to stable mocks — we don't want real network
+    // calls complicating the hb-update count
+    await page.context().route(
+      (url) => url.href.includes('pinboard.net/api'),
+      async (route) => {
+        const url = route.request().url();
+        if (url.includes('/posts/update')) {
+          // Return same time as MOCK_LAST_SYNC → needsSync=false → Dates Hack only.
+          // This keeps the delta-sync branch from firing and inflating the count.
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ update_time: MOCK_LAST_SYNC }),
+          });
+        } else if (url.includes('/posts/dates')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ dates: {} }),
+          });
+        } else {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({}),
+          });
+        }
+      }
+    );
+
+    await page.goto(`http://localhost:5173/?dbName=${uniqueDb}`);
+
+    // Seed the trigger: fortress_last_sync_date in localStorage
+    await page.evaluate((ts) => {
+      localStorage.setItem('fortress_last_sync_date', ts);
+      localStorage.setItem('pingolin_auth_token', 'test:TOKEN');
+      localStorage.setItem('pingolin_proxy_url', 'https://pinboard.net/api');
+      localStorage.setItem('pingolin_hydrated', 'true');
+    }, MOCK_LAST_SYNC);
+
+    await page.reload();
+    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+
+    // Observe for 4 seconds — enough for a loop to spiral to 10+ hb-updates if broken
+    await page.waitForTimeout(4000);
+
+    // ── Collect evidence ───────────────────────────────────────────────────
+    const msgs = await page.evaluate<any[]>(() => (window as any).__outboundRpcLog || []);
+    const hbUpdateCount = msgs.filter(
+      (m) => m.type === 'RPC_FETCH' && m.id === 'hb-update'
+    ).length;
+
+    const keyStillPresent = await page.evaluate(
+      () => localStorage.getItem('fortress_last_sync_date') !== null
+    );
+
+    console.log(
+      `[Scenario 34] hb-update calls in 4s: ${hbUpdateCount}, ` +
+      `fortress_last_sync_date still in localStorage: ${keyStillPresent}`
+    );
+
+    // ── Assertions ─────────────────────────────────────────────────────────
+
+    // 1. The override key MUST be gone — removeItem must have fired
+    expect(
+      keyStillPresent,
+      'REGRESSION: fortress_last_sync_date still in localStorage after boot! ' +
+      'The removeItem guard is missing — infinite SESSION_RESTORED loop is possible.'
+    ).toBe(false);
+
+    // 2. hb-update call count must be sane (≤ 4 for a 4s window with 60s heartbeat).
+    // An infinite loop would produce 10+ calls within seconds.
+    expect(
+      hbUpdateCount,
+      `REGRESSION: ${hbUpdateCount} hb-update calls in 4s — infinite loop detected! ` +
+      `The removeItem guard in app.js is broken.`
+    ).toBeLessThanOrEqual(4);
+  });
+
+  test('Scenario 31: The Empty LastSync Gate (New Device Gets Full Hydration)', async ({
+    page,
+  }) => {
+    // ── Purpose ────────────────────────────────────────────────────────────────
+    // Guards the critical branch in handleHeartbeatUpdate (Main.elm line ~734):
+    //
+    //   if model.lastSyncTime == "" then START_HYDRATION   ← full import
+    //   else                              hb-delta-fetch   ← date-filtered delta
+    //
+    // Real-world trigger: returning user on a NEW device (or cleared OPFS).
+    // Their token is in localStorage but the OPFS DB is empty — no last_full_sync_time.
+    // Worker sends SESSION_RESTORED with lastSync="" → Elm must do a full pull.
+    //
+    // If this gate breaks (e.g. lastSyncTime is somehow non-empty on a fresh DB),
+    // the user gets an empty bookmark list and no error — silent data loss.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    const MOCK_SERVER_TIME = '2024-09-01T00:00:00Z';
+    const uniqueDb = `test-scenario31-${Date.now()}.db`;
+
+    // Track the /posts/all request to verify it has NO date filter
+    let postsAllUrl = '';
+    let startHydrationSent = false;
+
+    await page.context().route(
+      (url) => url.href.includes('pinboard.net/api'),
+      async (route) => {
+        const url = route.request().url();
+        if (url.includes('/posts/update')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ update_time: MOCK_SERVER_TIME }),
+          });
+        } else if (url.includes('/posts/all')) {
+          postsAllUrl = url; // capture full URL to inspect params
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify([
+              {
+                href: 'https://hydrated.com',
+                description: 'Hydrated Bookmark',
+                tags: 'test',
+                time: MOCK_SERVER_TIME,
+              },
+            ]),
+          });
+        } else if (url.includes('/posts/dates')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ dates: {} }),
+          });
+        } else {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({}),
+          });
+        }
+      }
+    );
+
+    // Cold boot: token in localStorage, but OPFS is EMPTY (fresh DB, no metadata).
+    // DO NOT seed fortress_last_sync_date — we want the real empty-lastSync path.
+    await page.goto(`http://localhost:5173/?dbName=${uniqueDb}`);
+    await page.evaluate(() => {
+      localStorage.setItem('pingolin_auth_token', 'test:TOKEN');
+      localStorage.setItem('pingolin_proxy_url', 'https://pinboard.net/api');
+      localStorage.setItem('pingolin_hydrated', 'true');
+      // Explicitly confirm no override key
+      localStorage.removeItem('fortress_last_sync_date');
+    });
+
+    await page.reload();
+    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+
+    // Allow time for the full boot → SESSION_RESTORED → hb-update → START_HYDRATION cycle
+    await page.waitForTimeout(3000);
+
+    // ── Collect evidence ───────────────────────────────────────────────────
+    const msgs = await page.evaluate<any[]>(() => (window as any).__outboundRpcLog || []);
+
+    startHydrationSent = msgs.some((m) => m.type === 'START_HYDRATION');
+
+    const deltaFetchSent = msgs.some(
+      (m) => m.type === 'RPC_FETCH' && m.id === 'hb-delta-fetch'
+    );
+
+    const postsAllParams = postsAllUrl
+      ? Object.fromEntries(new URL(postsAllUrl).searchParams.entries())
+      : {};
+    const hasDateFilter =
+      'fromdt' in postsAllParams || 'since' in postsAllParams;
+
+    console.log(
+      `[Scenario 31] START_HYDRATION sent: ${startHydrationSent}, ` +
+      `hb-delta-fetch sent: ${deltaFetchSent}, ` +
+      `/posts/all date filter: ${hasDateFilter ? JSON.stringify(postsAllParams) : 'none'}`
+    );
+
+    // ── Assertions ─────────────────────────────────────────────────────────
+
+    // 1. START_HYDRATION MUST fire — empty lastSyncTime triggers the full pull gate
+    expect(
+      startHydrationSent,
+      'REGRESSION: START_HYDRATION was NOT sent for a new device with empty OPFS. ' +
+      'The user will get an empty bookmark list — silent data loss!'
+    ).toBe(true);
+
+    // 2. hb-delta-fetch must NOT fire — there is no prior anchor to delta from
+    expect(
+      deltaFetchSent,
+      'REGRESSION: hb-delta-fetch fired for a fresh DB with no lastSyncTime. ' +
+      'A date-filtered delta on an empty DB will silently miss all historical bookmarks.'
+    ).toBe(false);
+
+    // 3. The /posts/all call (from START_HYDRATION) must have NO date filter
+    expect(
+      hasDateFilter,
+      `REGRESSION: /posts/all was called WITH a date filter (${JSON.stringify(postsAllParams)}) ` +
+      `on a fresh DB — only new bookmarks would be imported, not the full archive.`
+    ).toBe(false);
+
+    // 4. Verify the bookmark actually appeared — hydration delivered data
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 5000 });
+
+    console.log('Scenario 31 passed: New device correctly gets START_HYDRATION (full pull).');
   });
 });
