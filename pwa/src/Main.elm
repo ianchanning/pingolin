@@ -652,6 +652,12 @@ routeRpcSuccess rpcId maybePayload model =
         "hb-update" ->
             handleHeartbeatUpdate maybePayload model
 
+        "hb-delta-fetch" ->
+            handleDeltaFetchResult maybePayload model
+
+        "hb-delta-tx" ->
+            handleDeltaTxResult model
+
         "hb-pending" ->
             handleHeartbeatPending maybePayload model
 
@@ -725,23 +731,39 @@ handleHeartbeatUpdate maybePayload model =
             serverTime /= "" && serverTime /= model.lastSyncTime
     in
     if needsSync then
-        -- Server has newer data: re-trigger the Big Pull exception
-        let
-            hydrateEnvelope =
-                Encode.object
-                    [ ( "type", Encode.string "START_HYDRATION" )
-                    , ( "payload"
-                      , Encode.object
-                            [ ( "proxyUrl", Encode.string model.proxyUrl )
-                            , ( "authToken", Encode.string model.token )
-                            ]
-                      )
-                    , ( "id", Encode.string "hb-hydrate" )
-                    ]
-        in
-        ( { model | syncPhase = SyncIdle, status = "Syncing...", lastSyncTime = serverTime }
-        , toWorker hydrateEnvelope
-        )
+        if model.lastSyncTime == "" then
+            -- Server has newer data and no last sync time: re-trigger the Big Pull exception
+            let
+                hydrateEnvelope =
+                    Encode.object
+                        [ ( "type", Encode.string "START_HYDRATION" )
+                        , ( "payload"
+                          , Encode.object
+                                [ ( "proxyUrl", Encode.string model.proxyUrl )
+                                , ( "authToken", Encode.string model.token )
+                                ]
+                          )
+                        , ( "id", Encode.string "hb-hydrate" )
+                        ]
+            in
+            ( { model | syncPhase = SyncIdle, status = "Syncing...", lastSyncTime = serverTime }
+            , toWorker hydrateEnvelope
+            )
+
+        else
+            -- Server has newer data and we have a last sync: perform delta sync
+            let
+                ( m1, deltaCmd ) =
+                    rpcFetch "hb-delta-fetch"
+                        "/posts/all"
+                        [ ( "auth_token", model.token )
+                        , ( "format", "json" )
+                        , ( "fromdt", model.lastSyncTime )
+                        , ( "since", model.lastSyncTime )
+                        ]
+                        { model | syncPhase = SyncIdle, status = "Syncing...", lastSyncTime = serverTime }
+            in
+            ( m1, deltaCmd )
 
     else
         -- Up-to-date: run the Dates Hack to catch remote deletions.
@@ -753,6 +775,128 @@ handleHeartbeatUpdate maybePayload model =
                     { model | syncPhase = SyncCheckingDates, status = "Checking for deletions..." }
         in
         ( m1, datesCmd )
+
+
+flexibleBookmarkDecoder : Decoder Bookmark
+flexibleBookmarkDecoder =
+    let
+        hrefDecoder =
+            Decode.oneOf
+                [ Decode.field "href" Decode.string
+                , Decode.field "url" Decode.string
+                ]
+
+        descDecoder =
+            Decode.oneOf
+                [ Decode.field "description" Decode.string
+                , Decode.field "title" Decode.string
+                ]
+
+        timeDecoder =
+            Decode.oneOf
+                [ Decode.field "time" Decode.string
+                , Decode.field "updated" Decode.string
+                ]
+
+        extendedDecoder =
+            Decode.oneOf
+                [ Decode.field "extended" Decode.string
+                , Decode.succeed ""
+                ]
+
+        tagsDecoder =
+            Decode.oneOf
+                [ Decode.field "tags" Decode.string
+                , Decode.succeed ""
+                ]
+                |> Decode.map (String.split " " >> List.filter (not << String.isEmpty))
+
+        statusDecoder =
+            Decode.oneOf
+                [ Decode.field "sync_status" Decode.string |> Decode.map decodeSyncStatus
+                , Decode.succeed Synchronized
+                ]
+    in
+    Decode.map6 Bookmark
+        hrefDecoder
+        descDecoder
+        extendedDecoder
+        tagsDecoder
+        timeDecoder
+        statusDecoder
+
+
+deltaResponseDecoder : Decoder (List Bookmark)
+deltaResponseDecoder =
+    Decode.oneOf
+        [ Decode.list flexibleBookmarkDecoder
+        , Decode.field "items" (Decode.list flexibleBookmarkDecoder)
+        ]
+
+
+handleDeltaFetchResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDeltaFetchResult maybePayload model =
+    let
+        bookmarks =
+            maybePayload
+                |> Maybe.andThen
+                    (\v -> Decode.decodeValue deltaResponseDecoder v |> Result.toMaybe)
+                |> Maybe.withDefault []
+    in
+    if List.isEmpty bookmarks then
+        -- No new bookmarks, just update the metadata last_sync_time and finalize
+        let
+            txStmts =
+                [ ( "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+                  , [ Encode.string model.lastSyncTime ]
+                  )
+                ]
+        in
+        rpcSqlTransaction "hb-delta-tx" txStmts model
+
+    else
+        let
+            toSql stmtB =
+                ( "INSERT INTO bookmarks (href, description, extended, tags, time, sync_status, local_last_modified) VALUES (?, ?, ?, ?, ?, 'SYNCHRONIZED', ?) ON CONFLICT(href) DO UPDATE SET description=excluded.description, extended=excluded.extended, tags=excluded.tags, time=excluded.time, local_last_modified=excluded.local_last_modified"
+                , [ Encode.string stmtB.href
+                  , Encode.string stmtB.description
+                  , Encode.string stmtB.extended
+                  , Encode.string (String.join " " stmtB.tags)
+                  , Encode.string stmtB.time
+                  , Encode.int 1700000000000
+                  ]
+                )
+
+            bookmarkStmts =
+                List.map toSql bookmarks
+
+            metaStmt =
+                ( "INSERT INTO metadata (key, value) VALUES ('last_sync_time', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+                , [ Encode.string model.lastSyncTime ]
+                )
+
+            txStmts =
+                bookmarkStmts ++ [ metaStmt ]
+        in
+        rpcSqlTransaction "hb-delta-tx" txStmts model
+
+
+handleDeltaTxResult : Model -> ( Model, Cmd Msg )
+handleDeltaTxResult model =
+    let
+        refreshCmd =
+            if model.query == "" then
+                queryAll
+
+            else
+                querySearch model.query
+    in
+    ( { model | syncPhase = SyncIdle, status = "Sync complete" }
+    , refreshCmd
+    )
+
+
+
 
 
 pendingRowDecoder : Decoder PendingRow

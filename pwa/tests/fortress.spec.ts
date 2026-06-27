@@ -1319,4 +1319,158 @@ test.describe('The Universal Fortress', () => {
 
     expect(fetchMsg.payload.params).toHaveProperty('auth_token');
   });
+
+  /**
+   * REGRESSION TEST: Delta Sync (The "Dates Hack" Regression)
+   *
+   * This test ensures that clicking the refresh-btn triggers an incremental
+   * update rather than a full import of the entire collection.
+   */
+  test('Scenario 29: Refresh action should only import new items and NOT flood the Pinboard API', async ({
+    page,
+  }) => {
+    // 1a. Navigation FIRST — use a RANDOM db name per run so OPFS never persists
+    // lastSyncTime across runs. A fixed name would cause the second run to restore
+    // `lastSyncTime = MOCK_SERVER_TIME`, making serverTime == lastSyncTime and
+    // skipping the delta-sync branch entirely.
+    const uniqueDb = `test-scenario29-${Date.now()}.db`;
+    await page.goto(`http://localhost:5173/?dbName=${uniqueDb}`);
+
+    // 1b. Seed localStorage SECOND
+    const MOCK_LAST_SYNC = '2023-10-01T00:00:00Z';
+    // NOTE: MOCK_SERVER_TIME must differ from MOCK_LAST_SYNC so `needsSync = true`
+    // in handleHeartbeatUpdate (serverTime /= model.lastSyncTime).
+    const MOCK_SERVER_TIME = '2025-06-01T00:00:00Z';
+    await page.evaluate((timestamp) => {
+      localStorage.setItem('fortress_last_sync_date', timestamp);
+      localStorage.setItem('pingolin_auth_token', 'test:TOKEN');
+      localStorage.setItem('pingolin_proxy_url', 'https://pinboard.net/api');
+      localStorage.setItem('pingolin_hydrated', 'true');
+    }, MOCK_LAST_SYNC);
+
+    // 2. Setup interception BEFORE reload to capture the automatic sync on boot
+    let pinboardRequestCount = 0;
+    let dateFilterSent = false;
+
+    // Use page.context().route to intercept requests and print URLs for debugging
+    await page.context().route(
+      (url) => url.href.includes('pinboard.net/api'),
+      async (route) => {
+        const urlStr = route.request().url();
+        console.log(`[TEST INTERCEPT] Intercepted Pinboard API request: ${urlStr}`);
+        pinboardRequestCount++;
+
+        // Verify the "Dates Hack": The request MUST contain the date filter parameter.
+        // If this is missing, the Pinboard API defaults to a full import.
+        if (
+          urlStr.includes('updated_since=') ||
+          urlStr.includes('date=') ||
+          urlStr.includes('since=')
+        ) {
+          dateFilterSent = true;
+        }
+
+        // Check the path to return appropriate mock data
+        if (urlStr.includes('/posts/update')) {
+          // Return a server time well ahead of MOCK_LAST_SYNC so needsSync=true is guaranteed
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              update_time: MOCK_SERVER_TIME,
+            }),
+          });
+        } else if (urlStr.includes('/posts/all')) {
+          // Delta sync: return exactly ONE item using the Pinboard API format
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify([
+              {
+                href: 'https://example.com/delta',
+                description: 'Delta Item',
+                extended: '',
+                tags: '',
+                time: '2024-01-01T12:00:00Z',
+                shared: 'yes',
+                toread: 'no',
+                meta: '',
+              },
+            ]),
+          });
+        } else if (urlStr.includes('/posts/dates')) {
+          // Dates Hack: Elm's serverDatesDecoder expects { dates: { "YYYY-MM-DD": "N" } }
+          // with STRING values (not ints). Matching the one delta item keeps localC == serverC → no prune.
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ dates: { '2024-01-01': '1' } }),
+          });
+        } else if (urlStr.includes('/posts/get')) {
+          // Dates Hack day-check: confirm the delta item exists on the server for this date
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              posts: [
+                {
+                  href: 'https://example.com/delta',
+                  description: 'Delta Item',
+                  time: '2024-01-01T12:00:00Z',
+                },
+              ],
+            }),
+          });
+        } else {
+          // Fallback: empty success
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({}),
+          });
+        }
+      }
+    );
+
+    // 3. Reload to apply seeded localStorage and start the sync
+    await page.reload();
+
+    // 4. Wait for the login form to disappear (session restored)
+    await expect(page.getByTestId('login-container')).not.toBeVisible();
+
+    // 5. Action: click the refresh button in Main.elm to verify it is active
+    await page.click('.refresh-btn');
+
+    // 6. Print debug logs of messages sent to the worker
+    const msgs = await page.evaluate<any[]>(
+      () => (window as any).__outboundRpcLog || []
+    );
+    console.log(`[TEST DEBUG] Outbound messages to worker: ${JSON.stringify(msgs, null, 2)}`);
+
+    // 6b. assertion: Verify the "Dates Hack" was actually used.
+    expect(
+      dateFilterSent,
+      'REGRESSION: Refresh request sent WITHOUT date filter. Pinboard API will return all items!'
+    ).toBe(true);
+
+    // 7. assertion: Verify the request count.
+    // A full delta sync cycle makes ~6 legitimate requests:
+    //   hb-update check × 2, posts/all (delta), posts/dates, posts/get (day check), hb-update post-sync.
+    // A full import of 23k links would be dozens of paginated requests.
+    // Threshold is set comfortably above the legitimate cycle count.
+    expect(
+      pinboardRequestCount,
+      `FLOOD DETECTED: ${pinboardRequestCount} requests sent. Delta sync failed!`
+    ).toBeLessThan(10);
+
+    // 8. Log UI state for diagnostics (not asserted — the status oscillates due to the 60s heartbeat
+    // cycling through "Checking for updates..." → "Synchronized." in quick succession).
+    const statusAtEnd = await page.locator('.status-chamber').innerText().catch(() => '<not visible>');
+    const itemsAtEnd = await page.locator('.bookmark-shrine').count();
+
+    console.log(
+      `Delta sync verified: ${pinboardRequestCount} requests, date filter used: ${dateFilterSent}.\n` +
+      `UI status at assertion time: "${statusAtEnd}", bookmark count: ${itemsAtEnd}`
+    );
+  });
 });

@@ -103,6 +103,9 @@ type WorkerInboundMessage =
   | { type: 'RPC_SQL_TRANSACTION'; id: string; payload: RpcSqlPayload[] }
   | { type: 'START_HYDRATION'; id: string; payload: StartHydrationPayload }
   | { type: 'INIT'; id: string; payload: InitPayload }
+  | { type: 'START_SYNC_LOOP'; id: string; payload: StartHydrationPayload }
+  | { type: 'PERFORM_DELTA_SYNC'; id: string; payload: StartHydrationPayload }
+  | { type: 'PERFORM_DATES_HACK'; id: string; payload: StartHydrationPayload }
   // Legacy Fallback (Type-safe evasion until Phase 5.1 is complete)
   | {
       type:

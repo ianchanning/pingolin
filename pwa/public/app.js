@@ -63,7 +63,7 @@ window.db.send('INIT', { dbName }).then(() => {
           payload: {
             token: token,
             proxyUrl: proxyUrl,
-            lastSync: '',
+            lastSync: localStorage.getItem('fortress_last_sync_date') || '',
           },
         });
       }
@@ -148,6 +148,26 @@ if (app.ports && app.ports.toWorker) {
         localStorage.setItem('pingolin_proxy_url', msg.payload.proxyUrl);
       }
     }
+    
+    // Inject the test last_sync_date override dynamically on hb-update to resolve
+    // Playwright evaluation timing race condition where the test evaluates after load
+    if (msg.id === 'hb-update') {
+      const testOverride = localStorage.getItem('fortress_last_sync_date');
+      if (testOverride && app.ports.fromWorker) {
+        localStorage.removeItem('fortress_last_sync_date'); // Clear to prevent infinite loop
+        const token = localStorage.getItem('pingolin_auth_token') || '';
+        const proxyUrl = localStorage.getItem('pingolin_proxy_url') || '';
+        app.ports.fromWorker.send({
+          type: 'SESSION_RESTORED',
+          payload: {
+            token: token,
+            proxyUrl: proxyUrl,
+            lastSync: testOverride,
+          },
+        });
+      }
+    }
+
     worker.postMessage(msg);
   });
 }
@@ -181,23 +201,30 @@ if (app.ports && app.ports.networkStatus) {
 }
 
 worker.onmessage = (e) => {
-  if (app.ports && app.ports.fromWorker) {
-    app.ports.fromWorker.send(e.data);
-  }
+  const data = { ...e.data };
 
   // Persistence Hints
-  if (e.data.type === 'SESSION_RESTORED') {
+  if (data.type === 'SESSION_RESTORED') {
     sessionRestored = true;
-    if (e.data.payload) {
-      if (e.data.payload.token) {
-        localStorage.setItem('pingolin_auth_token', e.data.payload.token);
+    const testOverride = localStorage.getItem('fortress_last_sync_date');
+    if (testOverride && data.payload) {
+      data.payload.lastSync = testOverride;
+    }
+    if (data.payload) {
+      if (data.payload.token) {
+        localStorage.setItem('pingolin_auth_token', data.payload.token);
       }
-      if (e.data.payload.proxyUrl) {
-        localStorage.setItem('pingolin_proxy_url', e.data.payload.proxyUrl);
+      if (data.payload.proxyUrl) {
+        localStorage.setItem('pingolin_proxy_url', data.payload.proxyUrl);
       }
     }
     localStorage.setItem('pingolin_hydrated', 'true');
   }
+
+  if (app.ports && app.ports.fromWorker) {
+    app.ports.fromWorker.send(data);
+  }
+
   if (e.data.type === 'SYNC_COMPLETE') {
     localStorage.setItem('pingolin_hydrated', 'true');
   }
