@@ -148,7 +148,7 @@ if (app.ports && app.ports.toWorker) {
         localStorage.setItem('pingolin_proxy_url', msg.payload.proxyUrl);
       }
     }
-    
+
     // Inject the test last_sync_date override dynamically on hb-update to resolve
     // Playwright evaluation timing race condition where the test evaluates after load
     if (msg.id === 'hb-update') {

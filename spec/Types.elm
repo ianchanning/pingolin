@@ -3,11 +3,13 @@ module Types exposing (..)
 import Dict exposing (Dict)
 import Json.Decode as Decode exposing (Decoder)
 
+
 type SyncStatus
     = Synchronized
     | PendingInsert
     | PendingUpdate
     | PendingDelete
+
 
 type alias Bookmark =
     { href : String
@@ -17,6 +19,7 @@ type alias Bookmark =
     , time : String
     , syncStatus : SyncStatus
     }
+
 
 type SyncPhase
     = SyncIdle
@@ -30,6 +33,7 @@ type SyncPhase
     | SyncRenameProcessing { oldTag : String, newTag : String, index : Int, total : Int }
     | SyncRenameDeletingTag String
 
+
 type alias PendingRow =
     { href : String
     , description : String
@@ -39,10 +43,12 @@ type alias PendingRow =
     , syncStatus : String
     }
 
+
 type RpcState
     = RpcPending
     | RpcSuccess (Maybe Decode.Value)
     | RpcFailed { message : String, code : String }
+
 
 type alias Model =
     { token : String
@@ -71,6 +77,8 @@ type alias Model =
     , renameNewTag : String
     , renameQueue : List PendingRow
     }
+
+
 
 -- Decoders move here
 -- bookmarkDecoder, workerMessageDecoder, etc.

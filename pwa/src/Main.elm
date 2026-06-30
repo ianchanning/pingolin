@@ -8,11 +8,11 @@ import Html.Events exposing (onClick, onInput, preventDefaultOn)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 import Process
+import Rpc exposing (..)
+import Sync exposing (..)
 import Task
 import Time
 import Types exposing (..)
-import Rpc exposing (..)
-import Sync exposing (..)
 
 
 
@@ -97,8 +97,6 @@ init flags =
 
 
 -- DECODERS (The "Dunkirk Clarity" Boundary)
-
-
 -- UPDATE (Pure Logic / Side-Effect Management)
 
 
@@ -276,7 +274,8 @@ update msg model =
             Sync.renamePushNext model
 
         QueryAll ->
-            ( model, toWorker <|
+            ( model
+            , toWorker <|
                 Encode.object
                     [ ( "type", Encode.string "QUERY_ALL" )
                     , ( "id", Encode.string "load-all" )
@@ -284,7 +283,8 @@ update msg model =
             )
 
         QuerySearch term ->
-            ( model, toWorker <|
+            ( model
+            , toWorker <|
                 Encode.object
                     [ ( "type", Encode.string "QUERY_SEARCH" )
                     , ( "payload", Encode.string term )
@@ -294,6 +294,7 @@ update msg model =
 
         SendWorkerValue val ->
             ( model, toWorker val )
+
 
 
 -- VIEW (Brutally Simple)

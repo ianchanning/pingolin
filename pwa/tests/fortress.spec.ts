@@ -1393,7 +1393,9 @@ test.describe('The Universal Fortress', () => {
       (url) => url.href.includes('pinboard.net/api'),
       async (route) => {
         const urlStr = route.request().url();
-        console.log(`[TEST INTERCEPT] Intercepted Pinboard API request: ${urlStr}`);
+        console.log(
+          `[TEST INTERCEPT] Intercepted Pinboard API request: ${urlStr}`
+        );
         pinboardRequestCount++;
 
         // Verify the "Dates Hack": The request MUST contain the date filter parameter.
@@ -1481,7 +1483,9 @@ test.describe('The Universal Fortress', () => {
     const msgs = await page.evaluate<any[]>(
       () => (window as any).__outboundRpcLog || []
     );
-    console.log(`[TEST DEBUG] Outbound messages to worker: ${JSON.stringify(msgs, null, 2)}`);
+    console.log(
+      `[TEST DEBUG] Outbound messages to worker: ${JSON.stringify(msgs, null, 2)}`
+    );
 
     // 6b. assertion: Verify the "Dates Hack" was actually used.
     expect(
@@ -1501,12 +1505,15 @@ test.describe('The Universal Fortress', () => {
 
     // 8. Log UI state for diagnostics (not asserted — the status oscillates due to the 60s heartbeat
     // cycling through "Checking for updates..." → "Synchronized." in quick succession).
-    const statusAtEnd = await page.locator('.status-chamber').innerText().catch(() => '<not visible>');
+    const statusAtEnd = await page
+      .locator('.status-chamber')
+      .innerText()
+      .catch(() => '<not visible>');
     const itemsAtEnd = await page.locator('.bookmark-shrine').count();
 
     console.log(
       `Delta sync verified: ${pinboardRequestCount} requests, date filter used: ${dateFilterSent}.\n` +
-      `UI status at assertion time: "${statusAtEnd}", bookmark count: ${itemsAtEnd}`
+        `UI status at assertion time: "${statusAtEnd}", bookmark count: ${itemsAtEnd}`
     );
   });
 
@@ -1540,7 +1547,9 @@ test.describe('The Universal Fortress', () => {
     });
 
     // Clear any routes registered by prior tests in this context before seeding
-    await page.context().unroute((url) => url.href.includes('pinboard.net/api'));
+    await page
+      .context()
+      .unroute((url) => url.href.includes('pinboard.net/api'));
 
     // Intercept all Pinboard API calls during seeding — return empty/stable mocks
     await page.context().route(
@@ -1571,7 +1580,9 @@ test.describe('The Universal Fortress', () => {
 
     // Reload to bootstrap the DB via INIT
     await page.reload();
-    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('login-container')).not.toBeVisible({
+      timeout: 10000,
+    });
 
     // Seed the metadata row directly via window.db (DatabaseBridge exposed by app.js).
     // This simulates what a real completed sync would have written to the DB.
@@ -1593,7 +1604,7 @@ test.describe('The Universal Fortress', () => {
     if (seededValue !== KNOWN_LAST_SYNC) {
       throw new Error(
         `[Scenario 30 Setup] Metadata write failed! Expected "${KNOWN_LAST_SYNC}", ` +
-        `got "${seededValue}". The window.db bridge may not be reaching the correct worker.`
+          `got "${seededValue}". The window.db bridge may not be reaching the correct worker.`
       );
     }
 
@@ -1611,7 +1622,9 @@ test.describe('The Universal Fortress', () => {
     let deltaFetchParams: Record<string, string> = {};
 
     // Update the intercept so /posts/update returns the NEWER server time
-    await page.context().unroute((url) => url.href.includes('pinboard.net/api'));
+    await page
+      .context()
+      .unroute((url) => url.href.includes('pinboard.net/api'));
     await page.context().route(
       (url) => url.href.includes('pinboard.net/api'),
       async (route) => {
@@ -1626,7 +1639,9 @@ test.describe('The Universal Fortress', () => {
           // Capture whether fromdt/since params are present
           const parsedUrl = new URL(url);
           deltaFetchSent = true;
-          deltaFetchParams = Object.fromEntries(parsedUrl.searchParams.entries());
+          deltaFetchParams = Object.fromEntries(
+            parsedUrl.searchParams.entries()
+          );
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
@@ -1650,11 +1665,15 @@ test.describe('The Universal Fortress', () => {
 
     // Cold boot — NO fortress_last_sync_date in localStorage
     await page.reload();
-    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('login-container')).not.toBeVisible({
+      timeout: 10000,
+    });
 
     // Inspect the outbound RPC log after boot settles
     await page.waitForTimeout(3000); // allow heartbeat + delta fetch to complete
-    const msgs = await page.evaluate<any[]>(() => (window as any).__outboundRpcLog || []);
+    const msgs = await page.evaluate<any[]>(
+      () => (window as any).__outboundRpcLog || []
+    );
 
     // ── Assertions ─────────────────────────────────────────────────────────
 
@@ -1679,7 +1698,7 @@ test.describe('The Universal Fortress', () => {
 
     console.log(
       `Scenario 30 passed: DB session restore verified.\n` +
-      `lastSync restored from OPFS: ${deltaFetchParams['fromdt'] || deltaFetchParams['since']}`
+        `lastSync restored from OPFS: ${deltaFetchParams['fromdt'] || deltaFetchParams['since']}`
     );
   });
 
@@ -1700,7 +1719,7 @@ test.describe('The Universal Fortress', () => {
     // ──────────────────────────────────────────────────────────────────────────
 
     const ORIGINAL_SYNC = '2024-03-15T10:00:00Z';
-    const SERVER_TIME   = '2024-06-01T00:00:00Z'; // newer → triggers delta
+    const SERVER_TIME = '2024-06-01T00:00:00Z'; // newer → triggers delta
     const uniqueDb = `test-scenario32-${Date.now()}.db`;
 
     // ── Phase 1: Seed DB with a known last_full_sync_time ──────────────────
@@ -1729,13 +1748,19 @@ test.describe('The Universal Fortress', () => {
             body: JSON.stringify({ dates: {} }),
           });
         } else {
-          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify([]),
+          });
         }
       }
     );
 
     await page.reload();
-    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('login-container')).not.toBeVisible({
+      timeout: 10000,
+    });
 
     // Seed the original anchor into OPFS metadata
     await page.evaluate(async (ts) => {
@@ -1749,7 +1774,9 @@ test.describe('The Universal Fortress', () => {
     // Update the mock so /posts/update returns the newer SERVER_TIME.
     // This drives handleHeartbeatUpdate → delta branch → hb-delta-tx writes
     // last_sync_time = SERVER_TIME.
-    await page.context().unroute((url) => url.href.includes('pinboard.net/api'));
+    await page
+      .context()
+      .unroute((url) => url.href.includes('pinboard.net/api'));
     await page.context().route(
       (url) => url.href.includes('pinboard.net/api'),
       async (route) => {
@@ -1773,7 +1800,11 @@ test.describe('The Universal Fortress', () => {
             body: JSON.stringify({ dates: {} }),
           });
         } else {
-          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({}),
+          });
         }
       }
     );
@@ -1786,7 +1817,9 @@ test.describe('The Universal Fortress', () => {
 
     // Reload to run the delta sync cycle
     await page.reload();
-    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('login-container')).not.toBeVisible({
+      timeout: 10000,
+    });
     // Wait for the delta sync + metadata write to complete
     await page.waitForTimeout(3000);
 
@@ -1799,7 +1832,9 @@ test.describe('The Universal Fortress', () => {
     let coldBootLastSync = '';
     let deltaFiredAgain = false;
 
-    await page.context().unroute((url) => url.href.includes('pinboard.net/api'));
+    await page
+      .context()
+      .unroute((url) => url.href.includes('pinboard.net/api'));
     await page.context().route(
       (url) => url.href.includes('pinboard.net/api'),
       async (route) => {
@@ -1817,7 +1852,10 @@ test.describe('The Universal Fortress', () => {
           // If this fires, the anchor wasn't updated — the bug is confirmed
           deltaFiredAgain = true;
           const parsedUrl = new URL(url);
-          coldBootLastSync = parsedUrl.searchParams.get('fromdt') || parsedUrl.searchParams.get('since') || '';
+          coldBootLastSync =
+            parsedUrl.searchParams.get('fromdt') ||
+            parsedUrl.searchParams.get('since') ||
+            '';
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
@@ -1830,13 +1868,19 @@ test.describe('The Universal Fortress', () => {
             body: JSON.stringify({ dates: {} }),
           });
         } else {
-          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({}),
+          });
         }
       }
     );
 
     await page.reload();
-    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('login-container')).not.toBeVisible({
+      timeout: 10000,
+    });
     await page.waitForTimeout(3000);
 
     // ── Assertions ─────────────────────────────────────────────────────────
@@ -1846,11 +1890,13 @@ test.describe('The Universal Fortress', () => {
     expect(
       deltaFiredAgain,
       `REGRESSION: Delta sync fired again on cold boot! ` +
-      `The metadata write did not update the session anchor. ` +
-      `Session sent fromdt="${coldBootLastSync}" (should have been "${SERVER_TIME}" → no delta needed)`
+        `The metadata write did not update the session anchor. ` +
+        `Session sent fromdt="${coldBootLastSync}" (should have been "${SERVER_TIME}" → no delta needed)`
     ).toBe(false);
 
-    console.log(`Scenario 32 passed: Delta sync metadata write verified. Anchor updated to ${SERVER_TIME}.`);
+    console.log(
+      `Scenario 32 passed: Delta sync metadata write verified. Anchor updated to ${SERVER_TIME}.`
+    );
   });
 
   test('Scenario 34: The Infinite Loop Prevention Guard (fortress_last_sync_date removeItem)', async ({
@@ -1914,13 +1960,17 @@ test.describe('The Universal Fortress', () => {
     }, MOCK_LAST_SYNC);
 
     await page.reload();
-    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('login-container')).not.toBeVisible({
+      timeout: 10000,
+    });
 
     // Observe for 4 seconds — enough for a loop to spiral to 10+ hb-updates if broken
     await page.waitForTimeout(4000);
 
     // ── Collect evidence ───────────────────────────────────────────────────
-    const msgs = await page.evaluate<any[]>(() => (window as any).__outboundRpcLog || []);
+    const msgs = await page.evaluate<any[]>(
+      () => (window as any).__outboundRpcLog || []
+    );
     const hbUpdateCount = msgs.filter(
       (m) => m.type === 'RPC_FETCH' && m.id === 'hb-update'
     ).length;
@@ -1931,7 +1981,7 @@ test.describe('The Universal Fortress', () => {
 
     console.log(
       `[Scenario 34] hb-update calls in 4s: ${hbUpdateCount}, ` +
-      `fortress_last_sync_date still in localStorage: ${keyStillPresent}`
+        `fortress_last_sync_date still in localStorage: ${keyStillPresent}`
     );
 
     // ── Assertions ─────────────────────────────────────────────────────────
@@ -1940,7 +1990,7 @@ test.describe('The Universal Fortress', () => {
     expect(
       keyStillPresent,
       'REGRESSION: fortress_last_sync_date still in localStorage after boot! ' +
-      'The removeItem guard is missing — infinite SESSION_RESTORED loop is possible.'
+        'The removeItem guard is missing — infinite SESSION_RESTORED loop is possible.'
     ).toBe(false);
 
     // 2. hb-update call count must be sane (≤ 4 for a 4s window with 60s heartbeat).
@@ -1948,7 +1998,7 @@ test.describe('The Universal Fortress', () => {
     expect(
       hbUpdateCount,
       `REGRESSION: ${hbUpdateCount} hb-update calls in 4s — infinite loop detected! ` +
-      `The removeItem guard in app.js is broken.`
+        `The removeItem guard in app.js is broken.`
     ).toBeLessThanOrEqual(4);
   });
 
@@ -2028,13 +2078,17 @@ test.describe('The Universal Fortress', () => {
     });
 
     await page.reload();
-    await expect(page.getByTestId('login-container')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('login-container')).not.toBeVisible({
+      timeout: 10000,
+    });
 
     // Allow time for the full boot → SESSION_RESTORED → hb-update → START_HYDRATION cycle
     await page.waitForTimeout(3000);
 
     // ── Collect evidence ───────────────────────────────────────────────────
-    const msgs = await page.evaluate<any[]>(() => (window as any).__outboundRpcLog || []);
+    const msgs = await page.evaluate<any[]>(
+      () => (window as any).__outboundRpcLog || []
+    );
 
     startHydrationSent = msgs.some((m) => m.type === 'START_HYDRATION');
 
@@ -2050,8 +2104,8 @@ test.describe('The Universal Fortress', () => {
 
     console.log(
       `[Scenario 31] START_HYDRATION sent: ${startHydrationSent}, ` +
-      `hb-delta-fetch sent: ${deltaFetchSent}, ` +
-      `/posts/all date filter: ${hasDateFilter ? JSON.stringify(postsAllParams) : 'none'}`
+        `hb-delta-fetch sent: ${deltaFetchSent}, ` +
+        `/posts/all date filter: ${hasDateFilter ? JSON.stringify(postsAllParams) : 'none'}`
     );
 
     // ── Assertions ─────────────────────────────────────────────────────────
@@ -2060,26 +2114,30 @@ test.describe('The Universal Fortress', () => {
     expect(
       startHydrationSent,
       'REGRESSION: START_HYDRATION was NOT sent for a new device with empty OPFS. ' +
-      'The user will get an empty bookmark list — silent data loss!'
+        'The user will get an empty bookmark list — silent data loss!'
     ).toBe(true);
 
     // 2. hb-delta-fetch must NOT fire — there is no prior anchor to delta from
     expect(
       deltaFetchSent,
       'REGRESSION: hb-delta-fetch fired for a fresh DB with no lastSyncTime. ' +
-      'A date-filtered delta on an empty DB will silently miss all historical bookmarks.'
+        'A date-filtered delta on an empty DB will silently miss all historical bookmarks.'
     ).toBe(false);
 
     // 3. The /posts/all call (from START_HYDRATION) must have NO date filter
     expect(
       hasDateFilter,
       `REGRESSION: /posts/all was called WITH a date filter (${JSON.stringify(postsAllParams)}) ` +
-      `on a fresh DB — only new bookmarks would be imported, not the full archive.`
+        `on a fresh DB — only new bookmarks would be imported, not the full archive.`
     ).toBe(false);
 
     // 4. Verify the bookmark actually appeared — hydration delivered data
-    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, { timeout: 5000 });
+    await expect(page.getByTestId('bookmark-item')).toHaveCount(1, {
+      timeout: 5000,
+    });
 
-    console.log('Scenario 31 passed: New device correctly gets START_HYDRATION (full pull).');
+    console.log(
+      'Scenario 31 passed: New device correctly gets START_HYDRATION (full pull).'
+    );
   });
 });

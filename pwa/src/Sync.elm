@@ -4,16 +4,24 @@ import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Process
+import Rpc exposing (..)
 import Task
 import Types exposing (..)
-import Rpc exposing (..)
+
+
 
 -- Helper to turn an Rpc envelope into a Cmd Msg
+
+
 toWorkerCmd : Encode.Value -> Cmd Msg
 toWorkerCmd env =
     Task.perform (\_ -> SendWorkerValue env) (Process.sleep 0)
 
+
+
 -- Main entry point for worker messages
+
+
 handleWorkerMsg : WorkerMsg -> Model -> ( Model, Cmd Msg )
 handleWorkerMsg msg model =
     case msg of
@@ -33,6 +41,7 @@ handleWorkerMsg msg model =
                 newStatus =
                     if hydrated && not (String.contains "Chaos" model.status) then
                         "Archive Online: " ++ String.fromInt (List.length bookmarks)
+
                     else
                         String.fromInt (List.length bookmarks)
             in
@@ -47,6 +56,7 @@ handleWorkerMsg msg model =
         RefreshRequiredMsg ->
             if model.query == "" then
                 ( model, Task.perform (\_ -> QueryAll) (Process.sleep 0) )
+
             else
                 ( model, Task.perform (\_ -> QuerySearch model.query) (Process.sleep 0) )
 
@@ -55,12 +65,14 @@ handleWorkerMsg msg model =
                 effectiveToken =
                     if token == "" then
                         model.token
+
                     else
                         token
 
                 effectiveProxy =
                     if proxyUrl == "" then
                         model.proxyUrl
+
                     else
                         proxyUrl
 
@@ -77,6 +89,7 @@ handleWorkerMsg msg model =
                 queryCmd =
                     if model.query == "" then
                         Task.perform (\_ -> QueryAll) (Process.sleep 0)
+
                     else
                         Task.perform (\_ -> QuerySearch model.query) (Process.sleep 0)
             in
@@ -95,6 +108,7 @@ handleWorkerMsg msg model =
                             m1
                 in
                 ( m2, Cmd.batch [ queryCmd, toWorkerCmd fetchEnv, toWorkerCmd pendingEnv ] )
+
             else
                 ( restoredModel, queryCmd )
 
@@ -112,20 +126,25 @@ handleWorkerMsg msg model =
                         | inFlightRpcs = Dict.insert rpcId (RpcFailed { message = message, code = code }) model.inFlightRpcs
                         , syncPhase = SyncIdle
                         , status = "Error (" ++ code ++ "): " ++ message
-                        }
+                    }
             in
             ( updatedModel, Cmd.none )
 
         UnknownMsg ->
             ( model, Cmd.none )
 
+
+
 -- Routes completed RPC responses to the correct business logic handler.
+
+
 routeRpcSuccess : String -> Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
 routeRpcSuccess rpcId maybePayload model =
     let
         refreshCmd =
             if model.query == "" then
                 Task.perform (\_ -> QueryAll) (Process.sleep 0)
+
             else
                 Task.perform (\_ -> QuerySearch model.query) (Process.sleep 0)
     in
@@ -191,15 +210,20 @@ routeRpcSuccess rpcId maybePayload model =
         _ ->
             ( model, Cmd.none )
 
+
 isSyncing : SyncPhase -> Bool
 isSyncing phase =
     case phase of
         SyncIdle ->
             False
+
         _ ->
             True
 
+
+
 -- HEARTBEAT HANDLERS
+
 
 handleHeartbeatUpdate : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
 handleHeartbeatUpdate maybePayload model =
@@ -231,6 +255,7 @@ handleHeartbeatUpdate maybePayload model =
             ( { model | syncPhase = SyncIdle, status = "Syncing...", lastSyncTime = serverTime }
             , toWorkerCmd hydrateEnvelope
             )
+
         else
             let
                 ( m1, deltaEnv ) =
@@ -244,6 +269,7 @@ handleHeartbeatUpdate maybePayload model =
                         { model | syncPhase = SyncIdle, status = "Syncing...", targetSyncTime = serverTime }
             in
             ( m1, toWorkerCmd deltaEnv )
+
     else
         let
             ( m1, datesEnv ) =
@@ -253,6 +279,7 @@ handleHeartbeatUpdate maybePayload model =
                     { model | syncPhase = SyncCheckingDates, status = "Checking for deletions..." }
         in
         ( m1, toWorkerCmd datesEnv )
+
 
 handleDeltaFetchResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
 handleDeltaFetchResult maybePayload model =
@@ -267,6 +294,7 @@ handleDeltaFetchResult maybePayload model =
         anchor =
             if model.targetSyncTime /= "" then
                 model.targetSyncTime
+
             else
                 model.lastSyncTime
     in
@@ -277,10 +305,12 @@ handleDeltaFetchResult maybePayload model =
                   , [ Encode.string anchor, Encode.string anchor ]
                   )
                 ]
-            ( m1, txEnv ) = 
+
+            ( m1, txEnv ) =
                 rpcSqlTransaction "hb-delta-tx" txStmts model
         in
         ( m1, toWorkerCmd txEnv )
+
     else
         let
             toSql stmtB =
@@ -304,10 +334,12 @@ handleDeltaFetchResult maybePayload model =
 
             txStmts =
                 bookmarkStmts ++ [ metaStmt ]
-            ( m1, txEnv ) = 
+
+            ( m1, txEnv ) =
                 rpcSqlTransaction "hb-delta-tx" txStmts model
         in
         ( m1, toWorkerCmd txEnv )
+
 
 handleDeltaTxResult : Model -> ( Model, Cmd Msg )
 handleDeltaTxResult model =
@@ -315,12 +347,14 @@ handleDeltaTxResult model =
         refreshCmd =
             if model.query == "" then
                 Task.perform (\_ -> QueryAll) (Process.sleep 0)
+
             else
                 Task.perform (\_ -> QuerySearch model.query) (Process.sleep 0)
     in
     ( { model | syncPhase = SyncIdle, status = "Sync complete", lastSyncTime = model.targetSyncTime, targetSyncTime = "" }
     , refreshCmd
     )
+
 
 handleHeartbeatPending : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
 handleHeartbeatPending maybePayload model =
@@ -333,6 +367,7 @@ handleHeartbeatPending maybePayload model =
     in
     if List.isEmpty pending then
         ( model, Cmd.none )
+
     else
         flushNext
             { model
@@ -340,7 +375,10 @@ handleHeartbeatPending maybePayload model =
                 , syncPhase = SyncFlushing { index = 0, total = List.length pending }
             }
 
+
+
 -- FLUSH LOOP
+
 
 flushNext : Model -> ( Model, Cmd Msg )
 flushNext model =
@@ -354,6 +392,7 @@ flushNext model =
                     case model.syncPhase of
                         SyncFlushing { index } ->
                             index
+
                         _ ->
                             0
 
@@ -361,6 +400,7 @@ flushNext model =
                     case model.syncPhase of
                         SyncFlushing flush ->
                             flush.total
+
                         _ ->
                             List.length model.pendingFlush
 
@@ -376,6 +416,7 @@ flushNext model =
                             , ( "format", "json" )
                             ]
                             model
+
                     else
                         rpcFetch "hb-flush-add"
                             "/posts/add"
@@ -391,6 +432,7 @@ flushNext model =
             in
             ( { newModel | status = statusText }, toWorkerCmd env )
 
+
 handleFlushDone : Model -> ( Model, Cmd Msg )
 handleFlushDone model =
     case model.pendingFlush of
@@ -403,6 +445,7 @@ handleFlushDone model =
                     case model.syncPhase of
                         SyncFlushing { index, total } ->
                             SyncFlushing { index = index + 1, total = total }
+
                         other ->
                             other
 
@@ -419,6 +462,7 @@ handleFlushDone model =
                 ]
             )
 
+
 handleFlushDeleteDone : Model -> ( Model, Cmd Msg )
 handleFlushDeleteDone model =
     case model.pendingFlush of
@@ -431,6 +475,7 @@ handleFlushDeleteDone model =
                     case model.syncPhase of
                         SyncFlushing { index, total } ->
                             SyncFlushing { index = index + 1, total = total }
+
                         other ->
                             other
 
@@ -447,7 +492,10 @@ handleFlushDeleteDone model =
                 ]
             )
 
+
+
 -- DATES HACK RECONCILIATION
+
 
 handleDatesServerResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
 handleDatesServerResult maybePayload model =
@@ -466,6 +514,7 @@ handleDatesServerResult maybePayload model =
     in
     ( m1, toWorkerCmd env )
 
+
 handleDatesLocalResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
 handleDatesLocalResult maybePayload model =
     let
@@ -481,6 +530,7 @@ handleDatesLocalResult maybePayload model =
                         let
                             localC =
                                 Dict.get date localCounts |> Maybe.withDefault 0
+
                             serverC =
                                 Dict.get date model.serverDates |> Maybe.withDefault 0
                         in
@@ -489,12 +539,14 @@ handleDatesLocalResult maybePayload model =
     in
     if List.isEmpty mismatches then
         ( { model | syncPhase = SyncIdle, status = "Synchronized." }, Cmd.none )
+
     else
         let
             m1 =
                 { model | pendingDateReconciles = mismatches }
         in
         reconcileNextDay m1 |> Tuple.mapFirst (\m -> m)
+
 
 reconcileNextDay : Model -> ( Model, Cmd Msg )
 reconcileNextDay model =
@@ -515,6 +567,7 @@ reconcileNextDay model =
             in
             ( m1, toWorkerCmd env )
 
+
 handleDayGetResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
 handleDayGetResult maybePayload model =
     let
@@ -527,6 +580,7 @@ handleDayGetResult maybePayload model =
             case model.syncPhase of
                 SyncReconcilingDay d ->
                     d
+
                 _ ->
                     List.head model.pendingDateReconciles |> Maybe.withDefault ""
     in
@@ -538,6 +592,7 @@ handleDayGetResult maybePayload model =
                 { model | dayServerHrefs = serverHrefs, syncPhase = SyncPruningDay date }
     in
     ( m1, toWorkerCmd env )
+
 
 handleDayLocalResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
 handleDayLocalResult maybePayload model =
@@ -555,6 +610,7 @@ handleDayLocalResult maybePayload model =
     in
     if List.isEmpty ghosts then
         reconcileNextDay { model | pendingDateReconciles = remaining }
+
     else
         let
             deleteStmts =
@@ -569,7 +625,10 @@ handleDayLocalResult maybePayload model =
         in
         ( m1, toWorkerCmd env )
 
+
+
 -- TAG RENAME WORKAROUND
+
 
 replaceTag : String -> String -> String -> String
 replaceTag old new tagsStr =
@@ -580,10 +639,12 @@ replaceTag old new tagsStr =
             (\t ->
                 if t == old then
                     new
+
                 else
                     t
             )
         |> String.join " "
+
 
 handleRenameQueryResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
 handleRenameQueryResult maybePayload model =
@@ -619,10 +680,12 @@ handleRenameQueryResult maybePayload model =
                 , syncPhase = SyncRenameProcessing { oldTag = oldTag, newTag = newTag, index = 0, total = List.length updatedQueue }
                 , status = "Renaming tag: updating local DB"
             }
-        ( m2, env ) = 
+
+        ( m2, env ) =
             rpcSqlTransaction "rename-tx" txStmts m1
     in
     ( m2, toWorkerCmd env )
+
 
 renamePushNext : Model -> ( Model, Cmd Msg )
 renamePushNext model =
@@ -633,12 +696,13 @@ renamePushNext model =
                     case model.syncPhase of
                         SyncRenameProcessing r ->
                             r.oldTag
+
                         _ ->
                             model.renameOldTag
             in
             if oldTag /= "" then
                 let
-                    ( m1, env ) = 
+                    ( m1, env ) =
                         rpcFetch "rename-delete-tag"
                             "/tags/delete"
                             [ ( "tag", oldTag )
@@ -648,6 +712,7 @@ renamePushNext model =
                             { model | syncPhase = SyncRenameDeletingTag oldTag, status = "Deleting tag " ++ oldTag ++ " from server..." }
                 in
                 ( m1, toWorkerCmd env )
+
             else
                 ( { model | syncPhase = SyncIdle, status = "Rename complete." }, Cmd.none )
 
@@ -657,12 +722,14 @@ renamePushNext model =
                     case model.syncPhase of
                         SyncRenameProcessing r ->
                             r
+
                         _ ->
                             { oldTag = model.renameOldTag, newTag = model.renameNewTag, index = 0, total = List.length model.renameQueue }
 
                 statusText =
                     "Renaming tag: pushing bookmark " ++ String.fromInt (rState.index + 1) ++ " of " ++ String.fromInt rState.total
-                ( m1, env ) = 
+
+                ( m1, env ) =
                     rpcFetch "rename-push-add"
                         "/posts/add"
                         [ ( "url", first.href )
@@ -678,6 +745,7 @@ renamePushNext model =
             in
             ( m1, toWorkerCmd env )
 
+
 handleRenamePushAddDone : Model -> ( Model, Cmd Msg )
 handleRenamePushAddDone model =
     case model.renameQueue of
@@ -690,6 +758,7 @@ handleRenamePushAddDone model =
                     case model.syncPhase of
                         SyncRenameProcessing r ->
                             r
+
                         _ ->
                             { oldTag = model.renameOldTag, newTag = model.renameNewTag, index = 0, total = List.length model.renameQueue }
 
@@ -706,12 +775,14 @@ handleRenamePushAddDone model =
                 ]
             )
 
+
 handleRenameDeleteTagDone : Model -> ( Model, Cmd Msg )
 handleRenameDeleteTagDone model =
     let
         refreshCmd =
             if model.query == "" then
                 Task.perform (\_ -> QueryAll) (Process.sleep 0)
+
             else
                 Task.perform (\_ -> QuerySearch model.query) (Process.sleep 0)
     in

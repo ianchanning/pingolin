@@ -1,10 +1,14 @@
 module Rpc exposing (..)
 
-import Json.Encode as Encode
 import Dict exposing (Dict)
+import Json.Encode as Encode
 import Types exposing (Model, RpcState(..))
 
+
+
 -- Helper to send an RPC_FETCH command and track it as Pending.
+
+
 rpcFetch : String -> String -> List ( String, String ) -> Model -> ( Model, Encode.Value )
 rpcFetch rpcId path params model =
     let
@@ -25,6 +29,7 @@ rpcFetch rpcId path params model =
     , envelope
     )
 
+
 rpcSqlQuery : String -> String -> List Encode.Value -> Model -> ( Model, Encode.Value )
 rpcSqlQuery rpcId sql bind model =
     let
@@ -33,16 +38,17 @@ rpcSqlQuery rpcId sql bind model =
                 [ ( "type", Encode.string "RPC_SQL_QUERY" )
                 , ( "id", Encode.string rpcId )
                 , ( "payload"
-                      , Encode.object
+                  , Encode.object
                         [ ( "sql", Encode.string sql )
                         , ( "bind", Encode.list identity bind )
                         ]
-                )
+                  )
                 ]
     in
     ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
     , envelope
     )
+
 
 rpcSqlExec : String -> String -> List Encode.Value -> Model -> ( Model, Encode.Value )
 rpcSqlExec rpcId sql bind model =
@@ -52,16 +58,17 @@ rpcSqlExec rpcId sql bind model =
                 [ ( "type", Encode.string "RPC_SQL_EXEC" )
                 , ( "id", Encode.string rpcId )
                 , ( "payload"
-                      , Encode.object
+                  , Encode.object
                         [ ( "sql", Encode.string sql )
                         , ( "bind", Encode.list identity bind )
                         ]
-                )
+                  )
                 ]
     in
     ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
     , envelope
     )
+
 
 rpcSqlTransaction : String -> List ( String, List Encode.Value ) -> Model -> ( Model, Encode.Value )
 rpcSqlTransaction rpcId stmts model =
@@ -83,9 +90,11 @@ rpcSqlTransaction rpcId stmts model =
     , envelope
     )
 
+
 rpcResult : String -> Model -> Maybe RpcState
 rpcResult rpcId model =
     Dict.get rpcId model.inFlightRpcs
+
 
 rpcClear : String -> Model -> Model
 rpcClear rpcId model =
