@@ -302,6 +302,24 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
+    viewLayout model
+        [ if model.showLoginForm || model.token == "" then
+            viewAuth model
+
+          else
+            text ""
+        , viewStatus model
+        , viewSearch model
+        , if model.showAddForm then
+            viewAddForm model
+
+          else
+            text ""
+        , viewVirtualList model
+        ]
+
+viewLayout : Model -> List (Html Msg) -> Html Msg
+viewLayout model children =
     div [ class "pingolin-fortress" ]
         [ div [ attribute "id" "masthead" ]
             [ div [ class "top-bar" ]
@@ -314,51 +332,53 @@ view model =
                             "OFFLINE"
                         )
                     ]
-                , button [ onClick ToggleLoginForm, class "help-btn", attribute "id" "help-toggle-btn", attribute "title" "Toggle Login Form" ] [ text "?" ]
+                , button [ onClick ToggleLoginForm, attribute "id" "help-toggle-btn", class "help-btn", attribute "title" "Toggle Login Form" ] [ text "?" ]
                 ]
             , img [ src "/pangolin_trans.png", attribute "id" "masthead-logo" ] []
             , h1 [] [ text "pingolin" ]
             ]
-        , div [ attribute "id" "contain" ]
-            [ if model.showLoginForm || model.token == "" then
-                div [ class "ritual-controls", attribute "data-testid" "login-container" ]
-                    [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
-                    , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
-                    , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
-                    , div [ class "version-tag" ] [ text ("v" ++ model.version) ]
-                    ]
+        , div [ attribute "id" "contain" ] children
+        ]
 
-              else
-                text ""
-            , div [ class "status-chamber" ]
-                [ div [ attribute "data-testid" "sync-status", class "status-text" ]
-                    [ text model.status ]
-                , if model.progress > 0 && model.progress < 1.0 then
-                    div [ class "progress-bar", attribute "data-testid" "sync-progress" ]
-                        [ div [ class "progress-fill", style "width" (String.fromFloat (model.progress * 100) ++ "%") ] [] ]
+viewAuth : Model -> Html Msg
+viewAuth model =
+    div [ class "ritual-controls", attribute "data-testid" "login-container" ]
+        [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
+        , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
+        , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
+        , div [ class "version-tag" ] [ text ("v" ++ model.version) ]
+        ]
 
-                  else
-                    text ""
-                ]
-            , div [ class "search-chamber" ]
-                [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] []
-                , button [ attribute "id" "toggle-add-btn", onClick ToggleAddForm ] [ text "+" ]
-                , button [ onClick ManualRefresh, class "refresh-btn", attribute "title" "Force Sync" ] [ text "↻" ]
-                ]
-            , if model.showAddForm then
-                div [ class "add-form", attribute "data-testid" "add-form" ]
-                    [ input [ placeholder "URL", value model.newBookmark.href, onInput SetNewHref, attribute "data-testid" "new-url" ] []
-                    , input [ placeholder "Title", value model.newBookmark.description, onInput SetNewDescription, attribute "data-testid" "new-title" ] []
-                    , input [ placeholder "Tags", value model.newBookmark.tags, onInput SetNewTags, attribute "data-testid" "new-tags", attribute "list" "tag-suggestions" ] []
-                    , Html.datalist [ attribute "id" "tag-suggestions" ]
-                        (List.map (\tag -> Html.option [ value tag ] []) model.tagSuggestions)
-                    , button [ onClick SubmitAdd, attribute "data-testid" "add-button" ] [ text "Add Bookmark" ]
-                    ]
+viewStatus : Model -> Html Msg
+viewStatus model =
+    div [ class "status-chamber" ]
+        [ div [ attribute "data-testid" "sync-status", class "status-text" ]
+            [ text model.status ]
+        , if model.progress > 0 && model.progress < 1.0 then
+            div [ class "progress-bar", attribute "data-testid" "sync-progress" ]
+                [ div [ class "progress-fill", style "width" (String.fromFloat (model.progress * 100) ++ "%") ] [] ]
 
-              else
-                text ""
-            , viewVirtualList model
-            ]
+          else
+            text ""
+        ]
+
+viewSearch : Model -> Html Msg
+viewSearch model =
+    div [ class "search-chamber" ]
+        [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] []
+        , button [ attribute "id" "toggle-add-btn", onClick ToggleAddForm ] [ text "+" ]
+        , button [ onClick ManualRefresh, class "refresh-btn", attribute "title" "Force Sync" ] [ text "↻" ]
+        ]
+
+viewAddForm : Model -> Html Msg
+viewAddForm model =
+    div [ class "add-form", attribute "data-testid" "add-form" ]
+        [ input [ placeholder "URL", value model.newBookmark.href, onInput SetNewHref, attribute "data-testid" "new-url" ] []
+        , input [ placeholder "Title", value model.newBookmark.description, onInput SetNewDescription, attribute "data-testid" "new-title" ] []
+        , input [ placeholder "Tags", value model.newBookmark.tags, onInput SetNewTags, attribute "data-testid" "new-tags", attribute "list" "tag-suggestions" ] []
+        , Html.datalist [ attribute "id" "tag-suggestions" ]
+            (List.map (\tag -> Html.option [ value tag ] []) model.tagSuggestions)
+        , button [ onClick SubmitAdd, attribute "data-testid" "add-button" ] [ text "Add Bookmark" ]
         ]
 
 
