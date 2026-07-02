@@ -65,7 +65,12 @@ type OutboundMessage =
   | { type: 'INIT_SUCCESS'; id: string }
   | {
       type: 'SESSION_RESTORED';
-      payload: { token: string; proxyUrl: string; lastSync: string; query: string };
+      payload: {
+        token: string;
+        proxyUrl: string;
+        lastSync: string;
+        query: string;
+      };
     }
   | {
       type: 'SYNC_PROGRESS';

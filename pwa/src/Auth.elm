@@ -1,8 +1,9 @@
 module Auth exposing (Model, Msg(..), init, update, view)
 
-import Html exposing (Html, div, input, button, text)
+import Html exposing (Html, button, div, input, text)
 import Html.Attributes exposing (attribute, class, placeholder, value)
-import Html.Events exposing (onInput, onClick)
+import Html.Events exposing (onClick, onInput)
+
 
 type alias Model =
     { token : String
@@ -10,18 +11,21 @@ type alias Model =
     , showLoginForm : Bool
     }
 
+
 type Msg
     = SetToken String
     | SetProxy String
     | ToggleLoginForm
     | TriggerStartSync
 
+
 init : ( String, String, Bool ) -> Model
-init (token, proxyUrl, showLoginForm) =
+init ( token, proxyUrl, showLoginForm ) =
     { token = token
     , proxyUrl = proxyUrl
     , showLoginForm = showLoginForm
     }
+
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -38,7 +42,8 @@ update msg model =
         TriggerStartSync ->
             ( model, Cmd.none )
 
-view : Model -> ( Msg -> msg ) -> String -> Html msg
+
+view : Model -> (Msg -> msg) -> String -> Html msg
 view model toMsg version =
     div [ class "ritual-controls", attribute "data-testid" "login-container" ]
         [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput (toMsg << SetToken), attribute "data-testid" "auth-token" ] []

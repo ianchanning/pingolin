@@ -18,7 +18,6 @@ toWorkerCmd env =
     Task.perform (\_ -> SendWorkerValue env) (Process.sleep 0)
 
 
-
 type alias SyncEnv =
     { token : String
     , proxyUrl : String
@@ -40,6 +39,7 @@ type alias SyncEnv =
     , renameNewTag : String
     , renameQueue : List PendingRow
     }
+
 
 
 -- Main entry point for worker messages
@@ -139,7 +139,8 @@ handleWorkerMsg msg model =
                             rpc1
                 in
                 ( { restoredModel | inFlightRpcs = rpc2, syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
-                , Cmd.batch [ queryCmd, toWorkerCmd env1, toWorkerCmd env2 ] )
+                , Cmd.batch [ queryCmd, toWorkerCmd env1, toWorkerCmd env2 ]
+                )
 
             else
                 ( restoredModel, queryCmd )
@@ -302,7 +303,8 @@ handleHeartbeatUpdate maybePayload model =
                         model.inFlightRpcs
             in
             ( { model | inFlightRpcs = m1, syncPhase = SyncIdle, status = "Syncing...", targetSyncTime = serverTime }
-            , toWorkerCmd deltaEnv )
+            , toWorkerCmd deltaEnv
+            )
 
     else
         let
@@ -314,7 +316,8 @@ handleHeartbeatUpdate maybePayload model =
                     model.inFlightRpcs
         in
         ( { model | inFlightRpcs = m1, syncPhase = SyncCheckingDates, status = "Checking for deletions..." }
-        , toWorkerCmd datesEnv )
+        , toWorkerCmd datesEnv
+        )
 
 
 handleDeltaFetchResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
@@ -548,7 +551,8 @@ handleDatesServerResult maybePayload model =
                 model.inFlightRpcs
     in
     ( { model | inFlightRpcs = m1, serverDates = dates, syncPhase = SyncComparingDates, status = "Checking for deletions..." }
-    , toWorkerCmd env )
+    , toWorkerCmd env
+    )
 
 
 handleDatesLocalResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
@@ -603,7 +607,8 @@ reconcileNextDay model =
                         model.inFlightRpcs
             in
             ( { model | inFlightRpcs = m1, syncPhase = SyncReconcilingDay date, status = "Reconciling " ++ date ++ "..." }
-            , toWorkerCmd env )
+            , toWorkerCmd env
+            )
 
 
 handleDayGetResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
@@ -630,7 +635,8 @@ handleDayGetResult maybePayload model =
                 model.inFlightRpcs
     in
     ( { model | inFlightRpcs = m1, dayServerHrefs = serverHrefs, syncPhase = SyncPruningDay date }
-    , toWorkerCmd env )
+    , toWorkerCmd env
+    )
 
 
 handleDayLocalResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )

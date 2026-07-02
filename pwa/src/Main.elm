@@ -1,5 +1,9 @@
 port module Main exposing (main)
 
+import AppState exposing (Model)
+import Archive
+import Auth
+import BookmarkForm
 import Browser
 import Dict exposing (Dict)
 import Html exposing (Html, a, button, div, h1, h3, img, input, span, text)
@@ -8,10 +12,6 @@ import Html.Events exposing (onClick, onInput, preventDefaultOn)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 import Process
-import Archive
-import Auth
-import BookmarkForm
-import AppState exposing (Model)
 import Rpc exposing (..)
 import Sync exposing (..)
 import Task
@@ -47,12 +47,12 @@ port scrollPosition : (Int -> msg) -> Sub msg
 port renameTagPort : (Decode.Value -> msg) -> Sub msg
 
 
-
 type alias Flags =
     { query : Maybe String
     , isHydrated : Bool
     , version : String
     }
+
 
 type Msg
     = GotAuthMsg Auth.Msg
@@ -69,6 +69,7 @@ type Msg
     | QueryAll
     | QuerySearch String
     | SendWorkerValue Encode.Value
+
 
 init : Flags -> ( Model, Cmd Msg )
 init flags =
@@ -103,26 +104,50 @@ init flags =
         Task.perform (\_ -> QueryAll) (Process.sleep 0)
     )
 
+
 updateWith : (subModel -> Model -> Model) -> (subMsg -> Msg) -> Model -> ( subModel, Cmd subMsg ) -> ( Model, Cmd Msg )
 updateWith updater toMsg model ( subModel, subCmd ) =
     ( updater subModel model
     , Cmd.map toMsg subCmd
     )
 
+
 mapSyncMsg : Types.Msg -> Msg
 mapSyncMsg msg =
     case msg of
-        Types.StartSync -> StartSync
-        Types.FromWorker val -> FromWorker val
-        Types.SetOnline online -> SetOnline online
-        Types.ManualRefresh -> ManualRefresh
-        Types.Tick time -> Tick time
-        Types.FlushNext -> FlushNext
-        Types.RenameTagRequest val -> RenameTagRequest val
-        Types.RenamePushNextMsg -> RenamePushNextMsg
-        Types.QueryAll -> QueryAll
-        Types.QuerySearch term -> QuerySearch term
-        Types.SendWorkerValue val -> SendWorkerValue val
+        Types.StartSync ->
+            StartSync
+
+        Types.FromWorker val ->
+            FromWorker val
+
+        Types.SetOnline online ->
+            SetOnline online
+
+        Types.ManualRefresh ->
+            ManualRefresh
+
+        Types.Tick time ->
+            Tick time
+
+        Types.FlushNext ->
+            FlushNext
+
+        Types.RenameTagRequest val ->
+            RenameTagRequest val
+
+        Types.RenamePushNextMsg ->
+            RenamePushNextMsg
+
+        Types.QueryAll ->
+            QueryAll
+
+        Types.QuerySearch term ->
+            QuerySearch term
+
+        Types.SendWorkerValue val ->
+            SendWorkerValue val
+
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -242,11 +267,16 @@ update msg model =
                     let
                         ( nextEnv, cmd ) =
                             Sync.handleWorkerMsg workerMsg env
-                        
+
                         nextAuth =
                             { token = nextEnv.token
                             , proxyUrl = nextEnv.proxyUrl
-                            , showLoginForm = if nextEnv.token == "" then model.auth.showLoginForm else False
+                            , showLoginForm =
+                                if nextEnv.token == "" then
+                                    model.auth.showLoginForm
+
+                                else
+                                    False
                             }
 
                         nextArchive =
@@ -280,7 +310,7 @@ update msg model =
                         , renameQueue = nextEnv.renameQueue
                         , targetSyncTime = nextEnv.targetSyncTime
                         , inFlightRpcs = nextEnv.inFlightRpcs
-                        }
+                      }
                     , Cmd.map mapSyncMsg cmd
                     )
 
@@ -310,7 +340,8 @@ update msg model =
                             m1
                 in
                 ( { model | inFlightRpcs = m2, syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
-                , Cmd.batch [ toWorker fetchEnv, toWorker pendingEnv ] )
+                , Cmd.batch [ toWorker fetchEnv, toWorker pendingEnv ]
+                )
 
         Tick _ ->
             if Sync.isSyncing model.syncPhase || model.auth.token == "" || model.auth.proxyUrl == "" || not model.isHydrated then
@@ -332,7 +363,8 @@ update msg model =
                             m1
                 in
                 ( { model | inFlightRpcs = m2, syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
-                , Cmd.batch [ toWorker fetchEnv, toWorker pendingEnv ] )
+                , Cmd.batch [ toWorker fetchEnv, toWorker pendingEnv ]
+                )
 
         FlushNext ->
             let
@@ -366,7 +398,12 @@ update msg model =
                 nextAuth =
                     { token = nextEnv.token
                     , proxyUrl = nextEnv.proxyUrl
-                    , showLoginForm = if nextEnv.token == "" then model.auth.showLoginForm else False
+                    , showLoginForm =
+                        if nextEnv.token == "" then
+                            model.auth.showLoginForm
+
+                        else
+                            False
                     }
 
                 nextArchive =
@@ -390,7 +427,7 @@ update msg model =
                 , syncPhase = nextEnv.syncPhase
                 , pendingFlush = nextEnv.pendingFlush
                 , inFlightRpcs = nextEnv.inFlightRpcs
-                }
+              }
             , Cmd.map mapSyncMsg cmd
             )
 
@@ -410,8 +447,9 @@ update msg model =
                         , renameNewTag = payload.newTag
                         , syncPhase = SyncRenameQuerying payload.oldTag payload.newTag
                         , status = "Renaming tag: querying DB"
-                        }
-                    , toWorker env )
+                      }
+                    , toWorker env
+                    )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -448,7 +486,12 @@ update msg model =
                 nextAuth =
                     { token = nextEnv.token
                     , proxyUrl = nextEnv.proxyUrl
-                    , showLoginForm = if nextEnv.token == "" then model.auth.showLoginForm else False
+                    , showLoginForm =
+                        if nextEnv.token == "" then
+                            model.auth.showLoginForm
+
+                        else
+                            False
                     }
 
                 nextArchive =
@@ -472,7 +515,7 @@ update msg model =
                 , syncPhase = nextEnv.syncPhase
                 , renameQueue = nextEnv.renameQueue
                 , inFlightRpcs = nextEnv.inFlightRpcs
-                }
+              }
             , Cmd.map mapSyncMsg cmd
             )
 
@@ -517,6 +560,7 @@ view model =
         , viewVirtualList model
         ]
 
+
 viewLayout : Model -> List (Html Msg) -> Html Msg
 viewLayout model children =
     div [ class "pingolin-fortress" ]
@@ -539,9 +583,11 @@ viewLayout model children =
         , div [ attribute "id" "contain" ] children
         ]
 
+
 viewAuth : Model -> Html Msg
 viewAuth model =
     Auth.view model.auth GotAuthMsg model.version
+
 
 viewStatus : Model -> Html Msg
 viewStatus model =
@@ -556,6 +602,7 @@ viewStatus model =
             text ""
         ]
 
+
 viewSearch : Model -> Html Msg
 viewSearch model =
     div [ class "search-chamber" ]
@@ -563,6 +610,7 @@ viewSearch model =
         , button [ attribute "id" "toggle-add-btn", onClick (GotFormMsg BookmarkForm.ToggleAddForm) ] [ text "+" ]
         , button [ onClick ManualRefresh, class "refresh-btn", attribute "title" "Force Sync" ] [ text "↻" ]
         ]
+
 
 viewAddForm : Model -> Html Msg
 viewAddForm model =
@@ -610,7 +658,7 @@ viewVirtualList model =
         ]
 
 
-viewIndexedBookmark : ( Archive.Msg -> msg ) -> ( Int, Bookmark ) -> Html msg
+viewIndexedBookmark : (Archive.Msg -> msg) -> ( Int, Bookmark ) -> Html msg
 viewIndexedBookmark toMsg ( index, b ) =
     div
         [ class "bookmark-shrine"
@@ -628,7 +676,7 @@ viewIndexedBookmark toMsg ( index, b ) =
         ]
 
 
-viewTag : ( Archive.Msg -> msg ) -> String -> Html msg
+viewTag : (Archive.Msg -> msg) -> String -> Html msg
 viewTag toMsg tag =
     a
         [ href ("?q=#" ++ tag)

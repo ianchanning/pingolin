@@ -1,10 +1,11 @@
 module AppState exposing (Model)
 
-import Auth
 import Archive
+import Auth
 import BookmarkForm
-import Types exposing (..)
 import Dict exposing (Dict)
+import Types exposing (..)
+
 
 type alias Model =
     { auth : Auth.Model

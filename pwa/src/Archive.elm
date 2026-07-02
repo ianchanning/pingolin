@@ -1,10 +1,11 @@
 module Archive exposing (Model, Msg(..), init, update, view)
 
-import Html exposing (Html, div, h3, a, label, text)
+import Html exposing (Html, a, div, h3, label, text)
 import Html.Attributes exposing (attribute, class, href, style, target)
 import Html.Events exposing (preventDefaultOn)
 import Json.Decode as Decode
 import Types exposing (Bookmark, SyncStatus(..))
+
 
 type alias Model =
     { query : String
@@ -13,10 +14,12 @@ type alias Model =
     , viewportHeight : Int
     }
 
+
 type Msg
     = SetQuery String
     | OnScroll Int
     | OnResize Int
+
 
 init : String -> Model
 init query =
@@ -25,6 +28,7 @@ init query =
     , scrollTop = 0
     , viewportHeight = 800
     }
+
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -38,15 +42,18 @@ update msg model =
         OnResize height ->
             ( { model | viewportHeight = height }, Cmd.none )
 
+
 rowHeight : Int
 rowHeight =
     120
+
 
 bufferItems : Int
 bufferItems =
     5
 
-view : Model -> ( Msg -> msg ) -> Html msg
+
+view : Model -> (Msg -> msg) -> Html msg
 view model toMsg =
     let
         totalCount =
@@ -72,7 +79,8 @@ view model toMsg =
             (List.map (viewIndexedBookmark toMsg) visibleBookmarks)
         ]
 
-viewIndexedBookmark : ( Msg -> msg ) -> ( Int, Bookmark ) -> Html msg
+
+viewIndexedBookmark : (Msg -> msg) -> ( Int, Bookmark ) -> Html msg
 viewIndexedBookmark toMsg ( index, b ) =
     div
         [ class "bookmark-shrine"
@@ -89,7 +97,8 @@ viewIndexedBookmark toMsg ( index, b ) =
             (label [] [ text "Tags: " ] :: List.intersperse (text ", ") (List.map (viewTag toMsg) b.tags))
         ]
 
-viewTag : ( Msg -> msg ) -> String -> Html msg
+
+viewTag : (Msg -> msg) -> String -> Html msg
 viewTag toMsg tag =
     a
         [ href ("?q=#" ++ tag)

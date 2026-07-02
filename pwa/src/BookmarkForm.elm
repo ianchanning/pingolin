@@ -1,14 +1,16 @@
 module BookmarkForm exposing (Model, Msg(..), init, update, view)
 
-import Html exposing (Html, div, input, button, text, datalist, option)
+import Html exposing (Html, button, datalist, div, input, option, text)
 import Html.Attributes exposing (attribute, class, placeholder, value)
-import Html.Events exposing (onInput, onClick)
+import Html.Events exposing (onClick, onInput)
+
 
 type alias Model =
     { newBookmark : { href : String, description : String, tags : String }
     , showAddForm : Bool
     , tagSuggestions : List String
     }
+
 
 type Msg
     = ToggleAddForm
@@ -18,12 +20,14 @@ type Msg
     | SetTagSuggestions (List String)
     | TriggerSubmit
 
+
 init : Model
 init =
     { newBookmark = { href = "", description = "", tags = "" }
     , showAddForm = False
     , tagSuggestions = []
     }
+
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -58,7 +62,8 @@ update msg model =
         TriggerSubmit ->
             ( model, Cmd.none )
 
-view : Model -> ( Msg -> msg ) -> List String -> Html msg
+
+view : Model -> (Msg -> msg) -> List String -> Html msg
 view model toMsg tagSuggestions =
     div [ class "add-form", attribute "data-testid" "add-form" ]
         [ input [ placeholder "URL", value model.newBookmark.href, onInput (toMsg << SetNewHref), attribute "data-testid" "new-url" ] []
