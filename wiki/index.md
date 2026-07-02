@@ -1,16 +1,12 @@
-# Pinboard-Reorg Index
+# Pinboard Reorg Wiki Index
 
-## Concepts
-- [[Sovereign-Domain-Pattern]] - The architectural shift from monolithic state to federated domain models in Elm.
-- [[The-Compiler-as-Sovereign-Pirate]] - The personality and role of the Elm compiler as a ruthless but benevolent judge.
+## 🏛️ Philosophical Pillars
+- [[The-Gospel-of-Glorious-Struggles]] - On the necessity of friction and the beauty of the struggle.
 
-## Reflections
-- [[The-Elm-Wall]] - A study in the psychological and technical friction of refactoring strict functional code.
-- [[The-Pi-Harness-Experience]] - Analysis of the interaction between LLM agency and the `pi` toolset.
-- [[The-Rituals-of-Nyx]] - A taxonomy of the "Confidence-Crash Loop" and linguistic patterns of the AI.
+## ⚙️ Technical Laws & Architecture
+- [[Elm-Sovereign-Laws]] - Syntactic constraints and compiler interpretation.
+- [[State-Flow-Pinboard]] - The pipeline from Worker to Model.
+- [[Sovereign-Domain-Migration]] - The shift from flat to federated state in the PWA.
 
-## Sources
-- [[Karpathy-Memex]] - The philosophy of persistent knowledge bases.
-
-## Logs
-- [[log]] - Chronological record of the voyage.
+## 🛠️ Rituals & RUDs (Project Specific)
+- [[Fixing-State-Loss-in-Federated-Models]] - How to properly integrate worker responses into nested domain models.
