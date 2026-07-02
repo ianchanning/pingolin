@@ -1,2 +1,2 @@
 // Generated automatically by generate-version.js. Do not edit.
-window.PACKAGE_VERSION = '3.1.0';
+window.PACKAGE_VERSION = '3.1.1';
