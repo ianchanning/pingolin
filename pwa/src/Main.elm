@@ -8,6 +8,10 @@ import Html.Events exposing (onClick, onInput, preventDefaultOn)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 import Process
+import Archive
+import Auth
+import BookmarkForm
+import AppState exposing (Model)
 import Rpc exposing (..)
 import Sync exposing (..)
 import Task
@@ -44,15 +48,27 @@ port renameTagPort : (Decode.Value -> msg) -> Sub msg
 
 
 
--- DOMAIN MODEL (Sovereign Edition)
-
-
 type alias Flags =
     { query : Maybe String
     , isHydrated : Bool
     , version : String
     }
 
+type Msg
+    = GotAuthMsg Auth.Msg
+    | GotArchiveMsg Archive.Msg
+    | GotFormMsg BookmarkForm.Msg
+    | StartSync
+    | FromWorker Decode.Value
+    | SetOnline Bool
+    | ManualRefresh
+    | Tick Time.Posix
+    | FlushNext
+    | RenameTagRequest Decode.Value
+    | RenamePushNextMsg
+    | QueryAll
+    | QuerySearch String
+    | SendWorkerValue Encode.Value
 
 init : Flags -> ( Model, Cmd Msg )
 init flags =
@@ -60,20 +76,13 @@ init flags =
         initialQuery =
             Maybe.withDefault "" flags.query
     in
-    ( { token = ""
-      , proxyUrl = "https://pinboard-proxy.ian-pinboard-proxy.workers.dev/"
-      , query = initialQuery
+    ( { auth = Auth.init ( "", "https://pinboard-proxy.ian-pinboard-proxy.workers.dev/", not flags.isHydrated )
+      , archive = Archive.init initialQuery
+      , form = BookmarkForm.init
       , status = "Awakening Ritual..."
-      , bookmarks = []
       , progress = 0.0
       , isOnline = True
       , isHydrated = flags.isHydrated
-      , showAddForm = False
-      , tagSuggestions = []
-      , scrollTop = 0
-      , viewportHeight = 800
-      , newBookmark = { href = "", description = "", tags = "" }
-      , showLoginForm = not flags.isHydrated
       , version = flags.version
       , inFlightRpcs = Dict.empty
       , syncPhase = SyncIdle
@@ -94,121 +103,195 @@ init flags =
         Task.perform (\_ -> QueryAll) (Process.sleep 0)
     )
 
+updateWith : (subModel -> Model -> Model) -> (subMsg -> Msg) -> Model -> ( subModel, Cmd subMsg ) -> ( Model, Cmd Msg )
+updateWith updater toMsg model ( subModel, subCmd ) =
+    ( updater subModel model
+    , Cmd.map toMsg subCmd
+    )
 
-
--- DECODERS (The "Dunkirk Clarity" Boundary)
--- UPDATE (Pure Logic / Side-Effect Management)
-
+mapSyncMsg : Types.Msg -> Msg
+mapSyncMsg msg =
+    case msg of
+        Types.StartSync -> StartSync
+        Types.FromWorker val -> FromWorker val
+        Types.SetOnline online -> SetOnline online
+        Types.ManualRefresh -> ManualRefresh
+        Types.Tick time -> Tick time
+        Types.FlushNext -> FlushNext
+        Types.RenameTagRequest val -> RenameTagRequest val
+        Types.RenamePushNextMsg -> RenamePushNextMsg
+        Types.QueryAll -> QueryAll
+        Types.QuerySearch term -> QuerySearch term
+        Types.SendWorkerValue val -> SendWorkerValue val
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        SetToken token ->
-            ( { model | token = token }, Cmd.none )
+        GotAuthMsg authMsg ->
+            case authMsg of
+                Auth.TriggerStartSync ->
+                    let
+                        payload =
+                            Encode.object
+                                [ ( "type", Encode.string "START_HYDRATION" )
+                                , ( "payload"
+                                  , Encode.object
+                                        [ ( "proxyUrl", Encode.string model.auth.proxyUrl )
+                                        , ( "authToken", Encode.string model.auth.token )
+                                        ]
+                                  )
+                                , ( "id", Encode.string "initial-sync" )
+                                ]
+                    in
+                    let
+                        ( nextAuth, cmd ) =
+                            Auth.update authMsg model.auth
+                    in
+                    ( { model | auth = nextAuth, status = "Summoning Archive...", progress = 0.1 }
+                    , Cmd.batch [ Cmd.map GotAuthMsg cmd, toWorker payload ]
+                    )
 
-        SetProxy proxy ->
-            ( { model | proxyUrl = proxy }, Cmd.none )
+                _ ->
+                    Auth.update authMsg model.auth
+                        |> updateWith (\a m -> { m | auth = a }) GotAuthMsg model
 
-        SetQuery query ->
-            ( { model | query = query, scrollTop = 0 }
-            , Cmd.batch
-                [ toWorker <|
-                    Encode.object
-                        [ ( "type", Encode.string "QUERY_SEARCH" )
-                        , ( "payload", Encode.string query )
-                        , ( "id", Encode.string "search" )
+        GotArchiveMsg archiveMsg ->
+            case archiveMsg of
+                Archive.SetQuery query ->
+                    let
+                        ( nextArchive, cmd ) =
+                            Archive.update archiveMsg model.archive
+                    in
+                    ( { model | archive = nextArchive }
+                    , Cmd.batch
+                        [ Cmd.map GotArchiveMsg cmd
+                        , toWorker <|
+                            Encode.object
+                                [ ( "type", Encode.string "QUERY_SEARCH" )
+                                , ( "payload", Encode.string query )
+                                , ( "id", Encode.string "search" )
+                                ]
+                        , updateUrl query
                         ]
-                , updateUrl query
-                ]
-            )
+                    )
+
+                _ ->
+                    Archive.update archiveMsg model.archive
+                        |> updateWith (\a m -> { m | archive = a }) GotArchiveMsg model
+
+        GotFormMsg formMsg ->
+            case formMsg of
+                BookmarkForm.TriggerSubmit ->
+                    let
+                        payload =
+                            Encode.object
+                                [ ( "type", Encode.string "LOCAL_UPSERT" )
+                                , ( "payload"
+                                  , Encode.object
+                                        [ ( "href", Encode.string model.form.newBookmark.href )
+                                        , ( "description", Encode.string model.form.newBookmark.description )
+                                        , ( "extended", Encode.string "" )
+                                        , ( "tags", Encode.string model.form.newBookmark.tags )
+                                        , ( "time", Encode.string "2023-10-01T12:00:00Z" )
+                                        ]
+                                  )
+                                , ( "id", Encode.string "local-add" )
+                                ]
+                    in
+                    let
+                        ( nextForm, cmd ) =
+                            BookmarkForm.update formMsg model.form
+                    in
+                    ( { model | form = { nextForm | showAddForm = False, newBookmark = BookmarkForm.init.newBookmark } }
+                    , Cmd.batch [ Cmd.map GotFormMsg cmd, toWorker payload ]
+                    )
+
+                _ ->
+                    BookmarkForm.update formMsg model.form
+                        |> updateWith (\f m -> { m | form = f }) GotFormMsg model
 
         StartSync ->
-            let
-                payload =
-                    Encode.object
-                        [ ( "type", Encode.string "START_HYDRATION" )
-                        , ( "payload"
-                          , Encode.object
-                                [ ( "proxyUrl", Encode.string model.proxyUrl )
-                                , ( "authToken", Encode.string model.token )
-                                ]
-                          )
-                        , ( "id", Encode.string "initial-sync" )
-                        ]
-            in
-            ( { model | status = "Summoning Archive...", progress = 0.1 }, toWorker payload )
+            ( model, Cmd.none )
 
         FromWorker val ->
             case Decode.decodeValue workerMessageDecoder val of
                 Ok workerMsg ->
-                    Sync.handleWorkerMsg workerMsg model
+                    let
+                        env =
+                            { token = model.auth.token
+                            , proxyUrl = model.auth.proxyUrl
+                            , query = model.archive.query
+                            , bookmarks = model.archive.bookmarks
+                            , tagSuggestions = model.form.tagSuggestions
+                            , isHydrated = model.isHydrated
+                            , status = model.status
+                            , progress = model.progress
+                            , lastSyncTime = model.lastSyncTime
+                            , targetSyncTime = model.targetSyncTime
+                            , syncPhase = model.syncPhase
+                            , inFlightRpcs = model.inFlightRpcs
+                            , pendingFlush = model.pendingFlush
+                            , serverDates = model.serverDates
+                            , pendingDateReconciles = model.pendingDateReconciles
+                            , dayServerHrefs = model.dayServerHrefs
+                            , renameOldTag = model.renameOldTag
+                            , renameNewTag = model.renameNewTag
+                            , renameQueue = model.renameQueue
+                            }
+                    in
+                    let
+                        ( nextEnv, cmd ) =
+                            Sync.handleWorkerMsg workerMsg env
+                        
+                        nextAuth =
+                            { token = nextEnv.token
+                            , proxyUrl = nextEnv.proxyUrl
+                            , showLoginForm = if nextEnv.token == "" then model.auth.showLoginForm else False
+                            }
+
+                        nextArchive =
+                            { query = nextEnv.query
+                            , bookmarks = nextEnv.bookmarks
+                            , scrollTop = model.archive.scrollTop
+                            , viewportHeight = model.archive.viewportHeight
+                            }
+
+                        nextForm =
+                            { newBookmark = model.form.newBookmark
+                            , showAddForm = model.form.showAddForm
+                            , tagSuggestions = nextEnv.tagSuggestions
+                            }
+                    in
+                    ( { model
+                        | auth = nextAuth
+                        , archive = nextArchive
+                        , form = nextForm
+                        , status = nextEnv.status
+                        , progress = nextEnv.progress
+                        , isHydrated = nextEnv.isHydrated
+                        , syncPhase = nextEnv.syncPhase
+                        , lastSyncTime = nextEnv.lastSyncTime
+                        , pendingFlush = nextEnv.pendingFlush
+                        , serverDates = nextEnv.serverDates
+                        , pendingDateReconciles = nextEnv.pendingDateReconciles
+                        , dayServerHrefs = nextEnv.dayServerHrefs
+                        , renameOldTag = nextEnv.renameOldTag
+                        , renameNewTag = nextEnv.renameNewTag
+                        , renameQueue = nextEnv.renameQueue
+                        , targetSyncTime = nextEnv.targetSyncTime
+                        , inFlightRpcs = nextEnv.inFlightRpcs
+                        }
+                    , Cmd.map mapSyncMsg cmd
+                    )
 
                 Err err ->
                     ( { model | status = "Ritual Failure: " ++ Decode.errorToString err }, Cmd.none )
 
-        ToggleAddForm ->
-            ( { model | showAddForm = not model.showAddForm }, Cmd.none )
-
-        ToggleLoginForm ->
-            ( { model | showLoginForm = not model.showLoginForm }, Cmd.none )
-
-        SetNewHref href ->
-            let
-                nb =
-                    model.newBookmark
-            in
-            ( { model | newBookmark = { nb | href = href } }, Cmd.none )
-
-        SetNewDescription desc ->
-            let
-                nb =
-                    model.newBookmark
-            in
-            ( { model | newBookmark = { nb | description = desc } }, Cmd.none )
-
-        SetNewTags tags ->
-            let
-                nb =
-                    model.newBookmark
-            in
-            ( { model | newBookmark = { nb | tags = tags } }, Cmd.none )
-
-        SubmitAdd ->
-            let
-                payload =
-                    Encode.object
-                        [ ( "type", Encode.string "LOCAL_UPSERT" )
-                        , ( "payload"
-                          , Encode.object
-                                [ ( "href", Encode.string model.newBookmark.href )
-                                , ( "description", Encode.string model.newBookmark.description )
-                                , ( "extended", Encode.string "" )
-                                , ( "tags", Encode.string model.newBookmark.tags )
-                                , ( "time", Encode.string "2023-10-01T12:00:00Z" )
-                                ]
-                          )
-                        , ( "id", Encode.string "local-add" )
-                        ]
-            in
-            ( { model | showAddForm = False, newBookmark = { href = "", description = "", tags = "" } }
-            , toWorker payload
-            )
-
         SetOnline online ->
             ( { model | isOnline = online }, Cmd.none )
 
-        SetTagSuggestions suggestions ->
-            ( { model | tagSuggestions = suggestions }, Cmd.none )
-
-        OnScroll top ->
-            ( { model | scrollTop = top }, Cmd.none )
-
-        OnResize height ->
-            ( { model | viewportHeight = height }, Cmd.none )
-
         ManualRefresh ->
-            -- Full heartbeat: check for server updates AND flush any pending local mutations.
-            if model.token == "" || model.proxyUrl == "" || Sync.isSyncing model.syncPhase then
+            if model.auth.token == "" || model.auth.proxyUrl == "" || Sync.isSyncing model.syncPhase then
                 ( { model | status = "Refreshing..." }, Task.perform (\_ -> QueryAll) (Process.sleep 0) )
 
             else
@@ -216,8 +299,9 @@ update msg model =
                     ( m1, fetchEnv ) =
                         Rpc.rpcFetch "hb-update"
                             "/posts/update"
-                            [ ( "auth_token", model.token ), ( "format", "json" ) ]
-                            { model | syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
+                            [ ( "auth_token", model.auth.token ), ( "format", "json" ) ]
+                            model.auth.proxyUrl
+                            model.inFlightRpcs
 
                     ( m2, pendingEnv ) =
                         Rpc.rpcSqlQuery "hb-pending"
@@ -225,10 +309,11 @@ update msg model =
                             []
                             m1
                 in
-                ( m2, Cmd.batch [ toWorker fetchEnv, toWorker pendingEnv ] )
+                ( { model | inFlightRpcs = m2, syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
+                , Cmd.batch [ toWorker fetchEnv, toWorker pendingEnv ] )
 
         Tick _ ->
-            if Sync.isSyncing model.syncPhase || model.token == "" || model.proxyUrl == "" || not model.isHydrated then
+            if Sync.isSyncing model.syncPhase || model.auth.token == "" || model.auth.proxyUrl == "" || not model.isHydrated then
                 ( model, Cmd.none )
 
             else
@@ -236,8 +321,9 @@ update msg model =
                     ( m1, fetchEnv ) =
                         Rpc.rpcFetch "hb-update"
                             "/posts/update"
-                            [ ( "auth_token", model.token ), ( "format", "json" ) ]
-                            { model | syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
+                            [ ( "auth_token", model.auth.token ), ( "format", "json" ) ]
+                            model.auth.proxyUrl
+                            model.inFlightRpcs
 
                     ( m2, pendingEnv ) =
                         Rpc.rpcSqlQuery "hb-pending"
@@ -245,10 +331,68 @@ update msg model =
                             []
                             m1
                 in
-                ( m2, Cmd.batch [ toWorker fetchEnv, toWorker pendingEnv ] )
+                ( { model | inFlightRpcs = m2, syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
+                , Cmd.batch [ toWorker fetchEnv, toWorker pendingEnv ] )
 
         FlushNext ->
-            Sync.flushNext model
+            let
+                env =
+                    { token = model.auth.token
+                    , proxyUrl = model.auth.proxyUrl
+                    , query = model.archive.query
+                    , bookmarks = model.archive.bookmarks
+                    , tagSuggestions = model.form.tagSuggestions
+                    , isHydrated = model.isHydrated
+                    , status = model.status
+                    , progress = model.progress
+                    , lastSyncTime = model.lastSyncTime
+                    , targetSyncTime = model.targetSyncTime
+                    , syncPhase = model.syncPhase
+                    , inFlightRpcs = model.inFlightRpcs
+                    , pendingFlush = model.pendingFlush
+                    , serverDates = model.serverDates
+                    , pendingDateReconciles = model.pendingDateReconciles
+                    , dayServerHrefs = model.dayServerHrefs
+                    , renameOldTag = model.renameOldTag
+                    , renameNewTag = model.renameNewTag
+                    , renameQueue = model.renameQueue
+                    }
+            in
+            let
+                ( nextEnv, cmd ) =
+                    Sync.flushNext env
+            in
+            let
+                nextAuth =
+                    { token = nextEnv.token
+                    , proxyUrl = nextEnv.proxyUrl
+                    , showLoginForm = if nextEnv.token == "" then model.auth.showLoginForm else False
+                    }
+
+                nextArchive =
+                    { query = nextEnv.query
+                    , bookmarks = nextEnv.bookmarks
+                    , scrollTop = model.archive.scrollTop
+                    , viewportHeight = model.archive.viewportHeight
+                    }
+
+                nextForm =
+                    { newBookmark = model.form.newBookmark
+                    , showAddForm = model.form.showAddForm
+                    , tagSuggestions = nextEnv.tagSuggestions
+                    }
+            in
+            ( { model
+                | auth = nextAuth
+                , archive = nextArchive
+                , form = nextForm
+                , status = nextEnv.status
+                , syncPhase = nextEnv.syncPhase
+                , pendingFlush = nextEnv.pendingFlush
+                , inFlightRpcs = nextEnv.inFlightRpcs
+                }
+            , Cmd.map mapSyncMsg cmd
+            )
 
         RenameTagRequest value ->
             case Decode.decodeValue renamePayloadDecoder value of
@@ -258,20 +402,79 @@ update msg model =
                             Rpc.rpcSqlQuery "rename-query"
                                 "SELECT href, description, extended, tags, time, sync_status FROM bookmarks WHERE (' ' || tags || ' ') LIKE ?"
                                 [ Encode.string ("% " ++ payload.oldTag ++ " %") ]
-                                { model
-                                    | renameOldTag = payload.oldTag
-                                    , renameNewTag = payload.newTag
-                                    , syncPhase = SyncRenameQuerying payload.oldTag payload.newTag
-                                    , status = "Renaming tag: querying DB"
-                                }
+                                model.inFlightRpcs
                     in
-                    ( m1, toWorker env )
+                    ( { model
+                        | inFlightRpcs = m1
+                        , renameOldTag = payload.oldTag
+                        , renameNewTag = payload.newTag
+                        , syncPhase = SyncRenameQuerying payload.oldTag payload.newTag
+                        , status = "Renaming tag: querying DB"
+                        }
+                    , toWorker env )
 
                 Err _ ->
                     ( model, Cmd.none )
 
         RenamePushNextMsg ->
-            Sync.renamePushNext model
+            let
+                env =
+                    { token = model.auth.token
+                    , proxyUrl = model.auth.proxyUrl
+                    , query = model.archive.query
+                    , bookmarks = model.archive.bookmarks
+                    , tagSuggestions = model.form.tagSuggestions
+                    , isHydrated = model.isHydrated
+                    , status = model.status
+                    , progress = model.progress
+                    , lastSyncTime = model.lastSyncTime
+                    , targetSyncTime = model.targetSyncTime
+                    , syncPhase = model.syncPhase
+                    , inFlightRpcs = model.inFlightRpcs
+                    , pendingFlush = model.pendingFlush
+                    , serverDates = model.serverDates
+                    , pendingDateReconciles = model.pendingDateReconciles
+                    , dayServerHrefs = model.dayServerHrefs
+                    , renameOldTag = model.renameOldTag
+                    , renameNewTag = model.renameNewTag
+                    , renameQueue = model.renameQueue
+                    }
+            in
+            let
+                ( nextEnv, cmd ) =
+                    Sync.renamePushNext env
+            in
+            let
+                nextAuth =
+                    { token = nextEnv.token
+                    , proxyUrl = nextEnv.proxyUrl
+                    , showLoginForm = if nextEnv.token == "" then model.auth.showLoginForm else False
+                    }
+
+                nextArchive =
+                    { query = nextEnv.query
+                    , bookmarks = nextEnv.bookmarks
+                    , scrollTop = model.archive.scrollTop
+                    , viewportHeight = model.archive.viewportHeight
+                    }
+
+                nextForm =
+                    { newBookmark = model.form.newBookmark
+                    , showAddForm = model.form.showAddForm
+                    , tagSuggestions = nextEnv.tagSuggestions
+                    }
+            in
+            ( { model
+                | auth = nextAuth
+                , archive = nextArchive
+                , form = nextForm
+                , status = nextEnv.status
+                , syncPhase = nextEnv.syncPhase
+                , renameQueue = nextEnv.renameQueue
+                , inFlightRpcs = nextEnv.inFlightRpcs
+                }
+            , Cmd.map mapSyncMsg cmd
+            )
 
         QueryAll ->
             ( model
@@ -296,21 +499,17 @@ update msg model =
             ( model, toWorker val )
 
 
-
--- VIEW (Brutally Simple)
-
-
 view : Model -> Html Msg
 view model =
     viewLayout model
-        [ if model.showLoginForm || model.token == "" then
+        [ if model.auth.showLoginForm || model.auth.token == "" then
             viewAuth model
 
           else
             text ""
         , viewStatus model
         , viewSearch model
-        , if model.showAddForm then
+        , if model.form.showAddForm then
             viewAddForm model
 
           else
@@ -332,7 +531,7 @@ viewLayout model children =
                             "OFFLINE"
                         )
                     ]
-                , button [ onClick ToggleLoginForm, attribute "id" "help-toggle-btn", class "help-btn", attribute "title" "Toggle Login Form" ] [ text "?" ]
+                , button [ onClick (GotAuthMsg Auth.ToggleLoginForm), attribute "id" "help-toggle-btn", class "help-btn", attribute "title" "Toggle Login Form" ] [ text "?" ]
                 ]
             , img [ src "/pangolin_trans.png", attribute "id" "masthead-logo" ] []
             , h1 [] [ text "pingolin" ]
@@ -342,12 +541,7 @@ viewLayout model children =
 
 viewAuth : Model -> Html Msg
 viewAuth model =
-    div [ class "ritual-controls", attribute "data-testid" "login-container" ]
-        [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput SetToken, attribute "data-testid" "auth-token" ] []
-        , input [ placeholder "Proxy URL", value model.proxyUrl, onInput SetProxy ] []
-        , button [ onClick StartSync, attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
-        , div [ class "version-tag" ] [ text ("v" ++ model.version) ]
-        ]
+    Auth.view model.auth GotAuthMsg model.version
 
 viewStatus : Model -> Html Msg
 viewStatus model =
@@ -365,21 +559,14 @@ viewStatus model =
 viewSearch : Model -> Html Msg
 viewSearch model =
     div [ class "search-chamber" ]
-        [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.query, onInput SetQuery, attribute "data-testid" "search-input" ] []
-        , button [ attribute "id" "toggle-add-btn", onClick ToggleAddForm ] [ text "+" ]
+        [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.archive.query, onInput (GotArchiveMsg << Archive.SetQuery), attribute "data-testid" "search-input" ] []
+        , button [ attribute "id" "toggle-add-btn", onClick (GotFormMsg BookmarkForm.ToggleAddForm) ] [ text "+" ]
         , button [ onClick ManualRefresh, class "refresh-btn", attribute "title" "Force Sync" ] [ text "↻" ]
         ]
 
 viewAddForm : Model -> Html Msg
 viewAddForm model =
-    div [ class "add-form", attribute "data-testid" "add-form" ]
-        [ input [ placeholder "URL", value model.newBookmark.href, onInput SetNewHref, attribute "data-testid" "new-url" ] []
-        , input [ placeholder "Title", value model.newBookmark.description, onInput SetNewDescription, attribute "data-testid" "new-title" ] []
-        , input [ placeholder "Tags", value model.newBookmark.tags, onInput SetNewTags, attribute "data-testid" "new-tags", attribute "list" "tag-suggestions" ] []
-        , Html.datalist [ attribute "id" "tag-suggestions" ]
-            (List.map (\tag -> Html.option [ value tag ] []) model.tagSuggestions)
-        , button [ onClick SubmitAdd, attribute "data-testid" "add-button" ] [ text "Add Bookmark" ]
-        ]
+    BookmarkForm.view model.form GotFormMsg model.form.tagSuggestions
 
 
 rowHeight : Int
@@ -400,31 +587,31 @@ viewVirtualList : Model -> Html Msg
 viewVirtualList model =
     let
         totalCount =
-            List.length model.bookmarks
+            List.length model.archive.bookmarks
 
         containerHeight =
             totalCount * rowHeight
 
         startIndex =
-            max 0 ((model.scrollTop // rowHeight) - bufferItems)
+            max 0 ((model.archive.scrollTop // rowHeight) - bufferItems)
 
         endIndex =
-            min (totalCount - 1) ((model.scrollTop + model.viewportHeight) // rowHeight + bufferItems)
+            min (totalCount - 1) ((model.archive.scrollTop + model.archive.viewportHeight) // rowHeight + bufferItems)
 
         visibleBookmarks =
-            model.bookmarks
+            model.archive.bookmarks
                 |> List.drop startIndex
                 |> List.take (endIndex - startIndex + 1)
                 |> List.indexedMap (\i b -> ( startIndex + i, b ))
     in
     div [ class "archive-scroll-container" ]
         [ div [ class "archive-height-spacer", style "height" (String.fromInt containerHeight ++ "px") ]
-            (List.map viewIndexedBookmark visibleBookmarks)
+            (List.map (viewIndexedBookmark (\msg -> GotArchiveMsg msg)) visibleBookmarks)
         ]
 
 
-viewIndexedBookmark : ( Int, Bookmark ) -> Html Msg
-viewIndexedBookmark ( index, b ) =
+viewIndexedBookmark : ( Archive.Msg -> msg ) -> ( Int, Bookmark ) -> Html msg
+viewIndexedBookmark toMsg ( index, b ) =
     div
         [ class "bookmark-shrine"
         , attribute "data-testid" "bookmark-item"
@@ -437,15 +624,15 @@ viewIndexedBookmark ( index, b ) =
             text ""
         , h3 [] [ a [ href b.href, target "_blank" ] [ text b.description ] ]
         , div [ class "tags" ]
-            (Html.label [] [ text "Tags: " ] :: List.intersperse (text ", ") (List.map viewTag b.tags))
+            (Html.label [] [ text "Tags: " ] :: List.intersperse (text ", ") (List.map (viewTag toMsg) b.tags))
         ]
 
 
-viewTag : String -> Html Msg
-viewTag tag =
+viewTag : ( Archive.Msg -> msg ) -> String -> Html msg
+viewTag toMsg tag =
     a
         [ href ("?q=#" ++ tag)
-        , preventDefaultOn "click" (Decode.succeed ( SetQuery ("#" ++ tag), True ))
+        , preventDefaultOn "click" (Decode.succeed ( toMsg (Archive.SetQuery ("#" ++ tag)), True ))
         ]
         [ text tag ]
 
@@ -459,11 +646,11 @@ subscriptions model =
     Sub.batch
         [ fromWorker FromWorker
         , networkStatus SetOnline
-        , tagSuggestions SetTagSuggestions
-        , viewportSize OnResize
-        , scrollPosition OnScroll
+        , tagSuggestions (GotFormMsg << BookmarkForm.SetTagSuggestions)
+        , viewportSize (GotArchiveMsg << Archive.OnResize)
+        , scrollPosition (GotArchiveMsg << Archive.OnScroll)
         , renameTagPort RenameTagRequest
-        , if model.token /= "" && model.isHydrated then
+        , if model.auth.token /= "" && model.isHydrated then
             Time.every (60 * 1000) Tick
 
           else
