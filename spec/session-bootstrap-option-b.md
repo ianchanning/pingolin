@@ -43,7 +43,11 @@ All of these are documented in the wiki. Read them before starting:
 ## The Execution Protocol
 ### Step 0: Establish the Sandbox
 ```bash
-git reset --hard HEAD && git clean -fd && git checkout -f 6cace23
+# To reset to the sovereign baseline (includes restored wiki/blueprints):
+git checkout study-v3.0.22-baseline
+
+# OR to reset strictly to the raw v3.0.22 tag:
+# git reset --hard HEAD && git clean -fd && git checkout -f 6cace23
 ```
 The sandbox should now be at v3.0.22.
 
