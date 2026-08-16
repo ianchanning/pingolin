@@ -15,3 +15,8 @@ This is an append-only chronological log of all major ingests, grimoire law synt
 ## [2026-08-16] curriculum | Established 9-Pillar Elm Curriculum Manifest
 - Created `wiki/raw/sources.md` establishing the 9 canonical pillars of Elm mastery (`cat:philosophy`, `cat:syntax`, `cat:tea`, `cat:types`, `cat:decoders`, `cat:interop`, `cat:compiler`, `cat:ecosystem`, `cat:antipatterns`).
 - Initialized `wiki/log.md` for timestamped audit tracing.
+
+## [2026-08-16] curriculum-enrichment | Canonical Links & Error-Catalog Blueprint Ingested
+- Populated `wiki/raw/sources.md` with direct canonical links, Evan Czaplicki & Richard Feldman talk IDs, package specs, and production SPA reference repo (`elm-spa-example`).
+- Integrated `elm/error-message-catalog` repository & issue tracker dataset specifications into `cat:compiler`.
+- Codified the 4-part Error Distillation Schema (Trigger Code, Compiler Output, Developer Intent vs. Elm Semantics, Canonical Idiomatic Fix).

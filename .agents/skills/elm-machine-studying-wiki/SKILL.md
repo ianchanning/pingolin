@@ -34,10 +34,11 @@ When activated, you must execute the following protocol in exact order:
 ### Phase B: Forge the Grimoire Page (The Write)
 1. Use your `write_to_file` tool to create a new markdown file in `.agents/skills/elm-machine-studying-wiki/wiki/` directory. 
 2. Naming convention: `.agents/skills/elm-machine-studying-wiki/wiki/[Concept-Name].md` (e.g., `.agents/skills/elm-machine-studying-wiki/wiki/Elm-Record-Updates.md`).
-3. The page MUST contain:
-   - **The Sovereign Law:** A 1-2 sentence hard rule.
-   - **The Trigger:** What specific compiler error string indicates this law is being broken.
-   - **The Pattern:** A generalized code example showing the WRONG way and the RIGHT way.
+3. The page MUST contain the 4-part Machine Studying mental model:
+   - **The Sovereign Law:** A 1-2 sentence hard rule / canonical idiomatic fix.
+   - **The Trigger & Compiler Output:** The exact error message string or parser diagnostic.
+   - **Developer Intent vs. Elm Semantics:** What the developer/LLM thought it was writing vs. why the compiler halted.
+   - **The Pattern:** A minimal reproducible code example showing the WRONG way and the RIGHT way.
 
 ### Phase C: Update Peripheral Vision (The Index)
 1. Use your `view_file` tool to open `.agents/skills/elm-machine-studying-wiki/wiki/index.md`.
