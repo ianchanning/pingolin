@@ -32,28 +32,28 @@ When activated, you must execute the following protocol in exact order:
 2. Isolate the *Generalized Principle*. Do not just memorize the exact line of code you changed. Understand *why* the compiler rejected the old code and accepted the new code (e.g., "Elm does not allow Record-Update-as-Value inside a let block").
 
 ### Phase B: Forge the Grimoire Page (The Write)
-1. Use your `write_file` tool to create a new markdown file in the `wiki/` directory. 
-2. Naming convention: `wiki/[Concept-Name].md` (e.g., `wiki/Elm-Record-Updates.md`).
+1. Use your `write_to_file` tool to create a new markdown file in `.agents/skills/elm-machine-studying-wiki/wiki/` directory. 
+2. Naming convention: `.agents/skills/elm-machine-studying-wiki/wiki/[Concept-Name].md` (e.g., `.agents/skills/elm-machine-studying-wiki/wiki/Elm-Record-Updates.md`).
 3. The page MUST contain:
    - **The Sovereign Law:** A 1-2 sentence hard rule.
    - **The Trigger:** What specific compiler error string indicates this law is being broken.
    - **The Pattern:** A generalized code example showing the WRONG way and the RIGHT way.
 
 ### Phase C: Update Peripheral Vision (The Index)
-1. Use your `read_file` tool to open `wiki/index.md`.
-2. Use your `write_file` (or append) tool to insert a link to your new page.
+1. Use your `view_file` tool to open `.agents/skills/elm-machine-studying-wiki/wiki/index.md`.
+2. Use your `replace_file_content` (or append) tool to insert a link to your new page.
 3. Format: `- [[Concept-Name]] - Short, 10-word description of the rule.`
 4. *WARNING:* Keep the index description incredibly short. This index lives permanently in your `<SYSTEM_STATE>`, so token bloat here is lethal.
 
 ## 4. The Progressive Disclosure Retrieval (How to Recall)
 When you encounter a new compiler error in the future:
-1. Scan your `<SYSTEM_STATE>` for the `wiki/index.md` contents.
+1. Scan your `<SYSTEM_STATE>` for `.agents/skills/elm-machine-studying-wiki/wiki/index.md` contents.
 2. If a description matches the vibe of your current error, DO NOT GUESS.
-3. Use `read_file('wiki/[Concept-Name].md')` to load the specific law into your active context.
+3. Use `view_file('.agents/skills/elm-machine-studying-wiki/wiki/[Concept-Name].md')` to load the specific law into your active context.
 4. Execute your code fix based on the retrieved law.
 
 ## 5. Reference Material
 If you lose your conceptual footing, use your read tools to parse the foundational texts:
-- `raw/machine-studying.md` (To understand why you must minimize inference tokens).
-- `raw/llm-wiki.md` (To understand how to structure your markdown knowledge base).
-- `raw/recursive-language-models.md` (To understand how to structure your agent interactions).
+- `.agents/skills/elm-machine-studying-wiki/raw/machine-studying.md` (To understand why you must minimize inference tokens).
+- `.agents/skills/elm-machine-studying-wiki/raw/llm-wiki.md` (To understand how to structure your markdown knowledge base).
+- `.agents/skills/elm-machine-studying-wiki/raw/recursive-language-models.md` (To understand how to structure your agent interactions).
