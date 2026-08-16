@@ -18,18 +18,41 @@ toWorkerCmd env =
     Task.perform (\_ -> SendWorkerValue env) (Process.sleep 0)
 
 
+type alias SyncEnv =
+    { token : String
+    , proxyUrl : String
+    , query : String
+    , bookmarks : List Bookmark
+    , tagSuggestions : List String
+    , isHydrated : Bool
+    , status : String
+    , progress : Float
+    , lastSyncTime : String
+    , targetSyncTime : String
+    , syncPhase : SyncPhase
+    , inFlightRpcs : Dict String RpcState
+    , pendingFlush : List PendingRow
+    , serverDates : Dict String Int
+    , pendingDateReconciles : List String
+    , dayServerHrefs : List String
+    , renameOldTag : String
+    , renameNewTag : String
+    , renameQueue : List PendingRow
+    }
+
+
 
 -- Main entry point for worker messages
 
 
-handleWorkerMsg : WorkerMsg -> Model -> ( Model, Cmd Msg )
+handleWorkerMsg : WorkerMsg -> SyncEnv -> ( SyncEnv, Cmd Msg )
 handleWorkerMsg msg model =
     case msg of
         ProgressMsg status progress ->
             ( { model | status = status, progress = progress }, Cmd.none )
 
         SyncCompleteMsg ->
-            ( { model | status = "Archive Restored. Finalizing...", progress = 1.0, isHydrated = True, showLoginForm = False }
+            ( { model | status = "Archive Restored. Finalizing...", progress = 1.0, isHydrated = True }
             , Task.perform (\_ -> QueryAll) (Process.sleep 0)
             )
 
@@ -60,7 +83,7 @@ handleWorkerMsg msg model =
             else
                 ( model, Task.perform (\_ -> QuerySearch model.query) (Process.sleep 0) )
 
-        SessionRestoredMsg token proxyUrl lastSync ->
+        SessionRestoredMsg token proxyUrl lastSync query ->
             let
                 effectiveToken =
                     if token == "" then
@@ -76,14 +99,21 @@ handleWorkerMsg msg model =
                     else
                         proxyUrl
 
+                effectiveQuery =
+                    if query == "" then
+                        model.query
+
+                    else
+                        query
+
                 restoredModel =
                     { model
                         | isHydrated = True
                         , status = "Session Restored."
                         , token = effectiveToken
                         , proxyUrl = effectiveProxy
-                        , showLoginForm = False
                         , lastSyncTime = lastSync
+                        , query = effectiveQuery
                     }
 
                 queryCmd =
@@ -95,19 +125,22 @@ handleWorkerMsg msg model =
             in
             if effectiveToken /= "" && effectiveProxy /= "" then
                 let
-                    ( m1, fetchEnv ) =
+                    ( rpc1, env1 ) =
                         rpcFetch "hb-update"
                             "/posts/update"
                             [ ( "auth_token", effectiveToken ), ( "format", "json" ) ]
-                            { restoredModel | syncPhase = SyncCheckingUpdate }
+                            effectiveProxy
+                            restoredModel.inFlightRpcs
 
-                    ( m2, pendingEnv ) =
+                    ( rpc2, env2 ) =
                         rpcSqlQuery "hb-pending"
                             "SELECT href, description, extended, tags, time, sync_status FROM bookmarks WHERE sync_status IN ('PENDING_INSERT', 'PENDING_UPDATE', 'PENDING_DELETE') ORDER BY local_last_modified ASC"
                             []
-                            m1
+                            rpc1
                 in
-                ( m2, Cmd.batch [ queryCmd, toWorkerCmd fetchEnv, toWorkerCmd pendingEnv ] )
+                ( { restoredModel | inFlightRpcs = rpc2, syncPhase = SyncCheckingUpdate, status = "Checking for updates..." }
+                , Cmd.batch [ queryCmd, toWorkerCmd env1, toWorkerCmd env2 ]
+                )
 
             else
                 ( restoredModel, queryCmd )
@@ -138,7 +171,7 @@ handleWorkerMsg msg model =
 -- Routes completed RPC responses to the correct business logic handler.
 
 
-routeRpcSuccess : String -> Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+routeRpcSuccess : String -> Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
 routeRpcSuccess rpcId maybePayload model =
     let
         refreshCmd =
@@ -225,7 +258,7 @@ isSyncing phase =
 -- HEARTBEAT HANDLERS
 
 
-handleHeartbeatUpdate : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleHeartbeatUpdate : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
 handleHeartbeatUpdate maybePayload model =
     let
         serverTime =
@@ -266,9 +299,12 @@ handleHeartbeatUpdate maybePayload model =
                         , ( "fromdt", model.lastSyncTime )
                         , ( "since", model.lastSyncTime )
                         ]
-                        { model | syncPhase = SyncIdle, status = "Syncing...", targetSyncTime = serverTime }
+                        model.proxyUrl
+                        model.inFlightRpcs
             in
-            ( m1, toWorkerCmd deltaEnv )
+            ( { model | inFlightRpcs = m1, syncPhase = SyncIdle, status = "Syncing...", targetSyncTime = serverTime }
+            , toWorkerCmd deltaEnv
+            )
 
     else
         let
@@ -276,21 +312,22 @@ handleHeartbeatUpdate maybePayload model =
                 rpcFetch "hb-dates-server"
                     "/posts/dates"
                     [ ( "auth_token", model.token ), ( "format", "json" ) ]
-                    { model | syncPhase = SyncCheckingDates, status = "Checking for deletions..." }
+                    model.proxyUrl
+                    model.inFlightRpcs
         in
-        ( m1, toWorkerCmd datesEnv )
+        ( { model | inFlightRpcs = m1, syncPhase = SyncCheckingDates, status = "Checking for deletions..." }
+        , toWorkerCmd datesEnv
+        )
 
 
-handleDeltaFetchResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDeltaFetchResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
 handleDeltaFetchResult maybePayload model =
     let
         bookmarks =
             maybePayload
-                |> Maybe.andThen
-                    (\v -> Decode.decodeValue deltaResponseDecoder v |> Result.toMaybe)
+                |> Maybe.andThen (\v -> Decode.decodeValue deltaResponseDecoder v |> Result.toMaybe)
                 |> Maybe.withDefault []
 
-        -- Use targetSyncTime if available, otherwise fallback to lastSyncTime
         anchor =
             if model.targetSyncTime /= "" then
                 model.targetSyncTime
@@ -307,9 +344,9 @@ handleDeltaFetchResult maybePayload model =
                 ]
 
             ( m1, txEnv ) =
-                rpcSqlTransaction "hb-delta-tx" txStmts model
+                rpcSqlTransaction "hb-delta-tx" txStmts model.inFlightRpcs
         in
-        ( m1, toWorkerCmd txEnv )
+        ( { model | inFlightRpcs = m1 }, toWorkerCmd txEnv )
 
     else
         let
@@ -336,12 +373,12 @@ handleDeltaFetchResult maybePayload model =
                 bookmarkStmts ++ [ metaStmt ]
 
             ( m1, txEnv ) =
-                rpcSqlTransaction "hb-delta-tx" txStmts model
+                rpcSqlTransaction "hb-delta-tx" txStmts model.inFlightRpcs
         in
-        ( m1, toWorkerCmd txEnv )
+        ( { model | inFlightRpcs = m1 }, toWorkerCmd txEnv )
 
 
-handleDeltaTxResult : Model -> ( Model, Cmd Msg )
+handleDeltaTxResult : SyncEnv -> ( SyncEnv, Cmd Msg )
 handleDeltaTxResult model =
     let
         refreshCmd =
@@ -356,13 +393,12 @@ handleDeltaTxResult model =
     )
 
 
-handleHeartbeatPending : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleHeartbeatPending : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
 handleHeartbeatPending maybePayload model =
     let
         pending =
             maybePayload
-                |> Maybe.andThen
-                    (\v -> Decode.decodeValue (Decode.list pendingRowDecoder) v |> Result.toMaybe)
+                |> Maybe.andThen (\v -> Decode.decodeValue (Decode.list pendingRowDecoder) v |> Result.toMaybe)
                 |> Maybe.withDefault []
     in
     if List.isEmpty pending then
@@ -380,7 +416,7 @@ handleHeartbeatPending maybePayload model =
 -- FLUSH LOOP
 
 
-flushNext : Model -> ( Model, Cmd Msg )
+flushNext : SyncEnv -> ( SyncEnv, Cmd Msg )
 flushNext model =
     case model.pendingFlush of
         [] ->
@@ -407,7 +443,7 @@ flushNext model =
                 statusText =
                     "Flushing " ++ String.fromInt (flushIndex + 1) ++ " of " ++ String.fromInt total
 
-                ( newModel, env ) =
+                ( m1, env ) =
                     if first.syncStatus == "PENDING_DELETE" then
                         rpcFetch "hb-flush-delete"
                             "/posts/delete"
@@ -415,7 +451,8 @@ flushNext model =
                             , ( "auth_token", model.token )
                             , ( "format", "json" )
                             ]
-                            model
+                            model.proxyUrl
+                            model.inFlightRpcs
 
                     else
                         rpcFetch "hb-flush-add"
@@ -428,12 +465,13 @@ flushNext model =
                             , ( "auth_token", model.token )
                             , ( "format", "json" )
                             ]
-                            model
+                            model.proxyUrl
+                            model.inFlightRpcs
             in
-            ( { newModel | status = statusText }, toWorkerCmd env )
+            ( { model | inFlightRpcs = m1, status = statusText }, toWorkerCmd env )
 
 
-handleFlushDone : Model -> ( Model, Cmd Msg )
+handleFlushDone : SyncEnv -> ( SyncEnv, Cmd Msg )
 handleFlushDone model =
     case model.pendingFlush of
         [] ->
@@ -449,13 +487,13 @@ handleFlushDone model =
                         other ->
                             other
 
-                ( markedModel, env ) =
+                ( m1, env ) =
                     rpcSqlExec "hb-mark-synced"
                         "UPDATE bookmarks SET sync_status = 'SYNCHRONIZED' WHERE href = ?"
                         [ Encode.string first.href ]
-                        { model | pendingFlush = rest, syncPhase = nextPhase }
+                        model.inFlightRpcs
             in
-            ( markedModel
+            ( { model | inFlightRpcs = m1, pendingFlush = rest, syncPhase = nextPhase }
             , Cmd.batch
                 [ toWorkerCmd env
                 , Task.perform (\_ -> FlushNext) (Process.sleep 3000)
@@ -463,7 +501,7 @@ handleFlushDone model =
             )
 
 
-handleFlushDeleteDone : Model -> ( Model, Cmd Msg )
+handleFlushDeleteDone : SyncEnv -> ( SyncEnv, Cmd Msg )
 handleFlushDeleteDone model =
     case model.pendingFlush of
         [] ->
@@ -479,13 +517,13 @@ handleFlushDeleteDone model =
                         other ->
                             other
 
-                ( markedModel, env ) =
+                ( m1, env ) =
                     rpcSqlExec "hb-mark-deleted"
                         "DELETE FROM bookmarks WHERE href = ?"
                         [ Encode.string first.href ]
-                        { model | pendingFlush = rest, syncPhase = nextPhase }
+                        model.inFlightRpcs
             in
-            ( markedModel
+            ( { model | inFlightRpcs = m1, pendingFlush = rest, syncPhase = nextPhase }
             , Cmd.batch
                 [ toWorkerCmd env
                 , Task.perform (\_ -> FlushNext) (Process.sleep 3000)
@@ -497,7 +535,7 @@ handleFlushDeleteDone model =
 -- DATES HACK RECONCILIATION
 
 
-handleDatesServerResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDatesServerResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
 handleDatesServerResult maybePayload model =
     let
         dates =
@@ -510,12 +548,14 @@ handleDatesServerResult maybePayload model =
             rpcSqlQuery "hb-dates-local"
                 "SELECT date(time) as d, count(*) as c FROM bookmarks WHERE sync_status = 'SYNCHRONIZED' GROUP BY d"
                 []
-                { model | serverDates = dates, syncPhase = SyncComparingDates }
+                model.inFlightRpcs
     in
-    ( m1, toWorkerCmd env )
+    ( { model | inFlightRpcs = m1, serverDates = dates, syncPhase = SyncComparingDates, status = "Checking for deletions..." }
+    , toWorkerCmd env
+    )
 
 
-handleDatesLocalResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDatesLocalResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
 handleDatesLocalResult maybePayload model =
     let
         localCounts =
@@ -548,7 +588,7 @@ handleDatesLocalResult maybePayload model =
         reconcileNextDay m1 |> Tuple.mapFirst (\m -> m)
 
 
-reconcileNextDay : Model -> ( Model, Cmd Msg )
+reconcileNextDay : SyncEnv -> ( SyncEnv, Cmd Msg )
 reconcileNextDay model =
     case model.pendingDateReconciles of
         [] ->
@@ -563,12 +603,15 @@ reconcileNextDay model =
                         , ( "auth_token", model.token )
                         , ( "format", "json" )
                         ]
-                        { model | syncPhase = SyncReconcilingDay date, status = "Reconciling " ++ date ++ "..." }
+                        model.proxyUrl
+                        model.inFlightRpcs
             in
-            ( m1, toWorkerCmd env )
+            ( { model | inFlightRpcs = m1, syncPhase = SyncReconcilingDay date, status = "Reconciling " ++ date ++ "..." }
+            , toWorkerCmd env
+            )
 
 
-handleDayGetResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDayGetResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
 handleDayGetResult maybePayload model =
     let
         serverHrefs =
@@ -589,12 +632,14 @@ handleDayGetResult maybePayload model =
             rpcSqlQuery "hb-day-local"
                 "SELECT href FROM bookmarks WHERE date(time) = ? AND sync_status = 'SYNCHRONIZED'"
                 [ Encode.string date ]
-                { model | dayServerHrefs = serverHrefs, syncPhase = SyncPruningDay date }
+                model.inFlightRpcs
     in
-    ( m1, toWorkerCmd env )
+    ( { model | inFlightRpcs = m1, dayServerHrefs = serverHrefs, syncPhase = SyncPruningDay date }
+    , toWorkerCmd env
+    )
 
 
-handleDayLocalResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleDayLocalResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
 handleDayLocalResult maybePayload model =
     let
         localHrefs =
@@ -621,9 +666,9 @@ handleDayLocalResult maybePayload model =
             ( m1, env ) =
                 rpcSqlTransaction "hb-day-prune"
                     deleteStmts
-                    { model | pendingDateReconciles = remaining }
+                    model.inFlightRpcs
         in
-        ( m1, toWorkerCmd env )
+        ( { model | inFlightRpcs = m1, pendingDateReconciles = remaining }, toWorkerCmd env )
 
 
 
@@ -646,7 +691,7 @@ replaceTag old new tagsStr =
         |> String.join " "
 
 
-handleRenameQueryResult : Maybe Decode.Value -> Model -> ( Model, Cmd Msg )
+handleRenameQueryResult : Maybe Decode.Value -> SyncEnv -> ( SyncEnv, Cmd Msg )
 handleRenameQueryResult maybePayload model =
     let
         bookmarks =
@@ -682,12 +727,12 @@ handleRenameQueryResult maybePayload model =
             }
 
         ( m2, env ) =
-            rpcSqlTransaction "rename-tx" txStmts m1
+            rpcSqlTransaction "rename-tx" txStmts m1.inFlightRpcs
     in
-    ( m2, toWorkerCmd env )
+    ( { model | inFlightRpcs = m2 }, toWorkerCmd env )
 
 
-renamePushNext : Model -> ( Model, Cmd Msg )
+renamePushNext : SyncEnv -> ( SyncEnv, Cmd Msg )
 renamePushNext model =
     case model.renameQueue of
         [] ->
@@ -709,9 +754,10 @@ renamePushNext model =
                             , ( "auth_token", model.token )
                             , ( "format", "json" )
                             ]
-                            { model | syncPhase = SyncRenameDeletingTag oldTag, status = "Deleting tag " ++ oldTag ++ " from server..." }
+                            model.proxyUrl
+                            model.inFlightRpcs
                 in
-                ( m1, toWorkerCmd env )
+                ( { model | inFlightRpcs = m1, syncPhase = SyncIdle, status = "Rename complete." }, toWorkerCmd env )
 
             else
                 ( { model | syncPhase = SyncIdle, status = "Rename complete." }, Cmd.none )
@@ -741,12 +787,13 @@ renamePushNext model =
                         , ( "format", "json" )
                         , ( "replace", "yes" )
                         ]
-                        { model | status = statusText }
+                        model.proxyUrl
+                        model.inFlightRpcs
             in
-            ( m1, toWorkerCmd env )
+            ( { model | inFlightRpcs = m1, status = statusText }, toWorkerCmd env )
 
 
-handleRenamePushAddDone : Model -> ( Model, Cmd Msg )
+handleRenamePushAddDone : SyncEnv -> ( SyncEnv, Cmd Msg )
 handleRenamePushAddDone model =
     case model.renameQueue of
         [] ->
@@ -762,13 +809,13 @@ handleRenamePushAddDone model =
                         _ ->
                             { oldTag = model.renameOldTag, newTag = model.renameNewTag, index = 0, total = List.length model.renameQueue }
 
-                ( markedModel, env ) =
+                ( m1, env ) =
                     rpcSqlExec "rename-mark-synced"
                         "UPDATE bookmarks SET sync_status = 'SYNCHRONIZED' WHERE href = ?"
                         [ Encode.string first.href ]
-                        { model | renameQueue = rest, syncPhase = SyncRenameProcessing { rState | index = rState.index + 1 } }
+                        model.inFlightRpcs
             in
-            ( markedModel
+            ( { model | inFlightRpcs = m1, renameQueue = rest, syncPhase = SyncRenameProcessing { rState | index = rState.index + 1 } }
             , Cmd.batch
                 [ toWorkerCmd env
                 , Task.perform (\_ -> RenamePushNextMsg) (Process.sleep 100)
@@ -776,7 +823,7 @@ handleRenamePushAddDone model =
             )
 
 
-handleRenameDeleteTagDone : Model -> ( Model, Cmd Msg )
+handleRenameDeleteTagDone : SyncEnv -> ( SyncEnv, Cmd Msg )
 handleRenameDeleteTagDone model =
     let
         refreshCmd =

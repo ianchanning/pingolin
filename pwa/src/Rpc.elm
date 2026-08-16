@@ -2,15 +2,15 @@ module Rpc exposing (..)
 
 import Dict exposing (Dict)
 import Json.Encode as Encode
-import Types exposing (Model, RpcState(..))
+import Types exposing (RpcState(..))
 
 
 
 -- Helper to send an RPC_FETCH command and track it as Pending.
 
 
-rpcFetch : String -> String -> List ( String, String ) -> Model -> ( Model, Encode.Value )
-rpcFetch rpcId path params model =
+rpcFetch : String -> String -> List ( String, String ) -> String -> Dict String RpcState -> ( Dict String RpcState, Encode.Value )
+rpcFetch rpcId path params proxyUrl inFlightRpcs =
     let
         envelope =
             Encode.object
@@ -18,20 +18,20 @@ rpcFetch rpcId path params model =
                 , ( "id", Encode.string rpcId )
                 , ( "payload"
                   , Encode.object
-                        [ ( "proxyUrl", Encode.string model.proxyUrl )
+                        [ ( "proxyUrl", Encode.string proxyUrl )
                         , ( "path", Encode.string path )
                         , ( "params", Encode.object (List.map (\( k, v ) -> ( k, Encode.string v )) params) )
                         ]
                   )
                 ]
     in
-    ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
+    ( Dict.insert rpcId RpcPending inFlightRpcs
     , envelope
     )
 
 
-rpcSqlQuery : String -> String -> List Encode.Value -> Model -> ( Model, Encode.Value )
-rpcSqlQuery rpcId sql bind model =
+rpcSqlQuery : String -> String -> List Encode.Value -> Dict String RpcState -> ( Dict String RpcState, Encode.Value )
+rpcSqlQuery rpcId sql bind inFlightRpcs =
     let
         envelope =
             Encode.object
@@ -45,13 +45,13 @@ rpcSqlQuery rpcId sql bind model =
                   )
                 ]
     in
-    ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
+    ( Dict.insert rpcId RpcPending inFlightRpcs
     , envelope
     )
 
 
-rpcSqlExec : String -> String -> List Encode.Value -> Model -> ( Model, Encode.Value )
-rpcSqlExec rpcId sql bind model =
+rpcSqlExec : String -> String -> List Encode.Value -> Dict String RpcState -> ( Dict String RpcState, Encode.Value )
+rpcSqlExec rpcId sql bind inFlightRpcs =
     let
         envelope =
             Encode.object
@@ -65,13 +65,13 @@ rpcSqlExec rpcId sql bind model =
                   )
                 ]
     in
-    ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
+    ( Dict.insert rpcId RpcPending inFlightRpcs
     , envelope
     )
 
 
-rpcSqlTransaction : String -> List ( String, List Encode.Value ) -> Model -> ( Model, Encode.Value )
-rpcSqlTransaction rpcId stmts model =
+rpcSqlTransaction : String -> List ( String, List Encode.Value ) -> Dict String RpcState -> ( Dict String RpcState, Encode.Value )
+rpcSqlTransaction rpcId stmts inFlightRpcs =
     let
         encodeStmt ( sql, bind ) =
             Encode.object
@@ -86,16 +86,16 @@ rpcSqlTransaction rpcId stmts model =
                 , ( "payload", Encode.list encodeStmt stmts )
                 ]
     in
-    ( { model | inFlightRpcs = Dict.insert rpcId RpcPending model.inFlightRpcs }
+    ( Dict.insert rpcId RpcPending inFlightRpcs
     , envelope
     )
 
 
-rpcResult : String -> Model -> Maybe RpcState
-rpcResult rpcId model =
-    Dict.get rpcId model.inFlightRpcs
+rpcResult : String -> Dict String RpcState -> Maybe RpcState
+rpcResult rpcId inFlightRpcs =
+    Dict.get rpcId inFlightRpcs
 
 
-rpcClear : String -> Model -> Model
-rpcClear rpcId model =
-    { model | inFlightRpcs = Dict.remove rpcId model.inFlightRpcs }
+rpcClear : String -> Dict String RpcState -> Dict String RpcState
+rpcClear rpcId inFlightRpcs =
+    Dict.remove rpcId inFlightRpcs

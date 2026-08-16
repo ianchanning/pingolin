@@ -52,36 +52,6 @@ type RpcState
     | RpcFailed { message : String, code : String }
 
 
-type alias Model =
-    { token : String
-    , proxyUrl : String
-    , query : String
-    , status : String
-    , bookmarks : List Bookmark
-    , progress : Float
-    , isOnline : Bool
-    , isHydrated : Bool
-    , showAddForm : Bool
-    , tagSuggestions : List String
-    , scrollTop : Int
-    , viewportHeight : Int
-    , newBookmark : { href : String, description : String, tags : String }
-    , showLoginForm : Bool
-    , version : String
-    , inFlightRpcs : Dict String RpcState
-    , syncPhase : SyncPhase
-    , lastSyncTime : String
-    , pendingFlush : List PendingRow
-    , serverDates : Dict String Int
-    , pendingDateReconciles : List String
-    , dayServerHrefs : List String
-    , renameOldTag : String
-    , renameNewTag : String
-    , renameQueue : List PendingRow
-    , targetSyncTime : String
-    }
-
-
 type WorkerMsg
     = ProgressMsg String Float
     | SyncCompleteMsg
@@ -89,28 +59,16 @@ type WorkerMsg
     | TagSuggestionsMsg (List String)
     | ErrorMsg String
     | RefreshRequiredMsg
-    | SessionRestoredMsg String String String
+    | SessionRestoredMsg String String String String
     | RpcSuccessMsg String (Maybe Decode.Value)
     | RpcErrorMsg String String String
     | UnknownMsg
 
 
 type Msg
-    = SetToken String
-    | SetProxy String
-    | SetQuery String
-    | StartSync
+    = StartSync
     | FromWorker Decode.Value
-    | ToggleAddForm
-    | ToggleLoginForm
-    | SetNewHref String
-    | SetNewDescription String
-    | SetNewTags String
-    | SubmitAdd
     | SetOnline Bool
-    | SetTagSuggestions (List String)
-    | OnScroll Int
-    | OnResize Int
     | ManualRefresh
     | Tick Time.Posix
     | FlushNext
@@ -180,10 +138,11 @@ workerMessageDecoder =
 
                     "SESSION_RESTORED" ->
                         Decode.at [ "payload" ]
-                            (Decode.map3 SessionRestoredMsg
+                            (Decode.map4 SessionRestoredMsg
                                 (Decode.oneOf [ Decode.field "token" Decode.string, Decode.succeed "" ])
                                 (Decode.oneOf [ Decode.field "proxyUrl" Decode.string, Decode.succeed "" ])
                                 (Decode.oneOf [ Decode.field "lastSync" Decode.string, Decode.succeed "" ])
+                                (Decode.oneOf [ Decode.field "query" Decode.string, Decode.succeed "" ])
                             )
 
                     "RPC_SUCCESS" ->

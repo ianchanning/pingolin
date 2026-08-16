@@ -2,7 +2,7 @@ import fast_rlm
 from fast_rlm import RLMConfig
 
 # primary_agent is REQUIRED — there is no default model.
-config = RLMConfig(primary_agent="google/gemma-4-31b-it:free")
+config = RLMConfig(primary_agent="google/gemma-4-31b-it:free", max_global_calls=10)
 
 def main():
     result = fast_rlm.run("Generate 50 fruits and count number of r", config=config)

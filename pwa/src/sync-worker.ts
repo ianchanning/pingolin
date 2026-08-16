@@ -65,7 +65,12 @@ type OutboundMessage =
   | { type: 'INIT_SUCCESS'; id: string }
   | {
       type: 'SESSION_RESTORED';
-      payload: { token: string; proxyUrl: string; lastSync: string };
+      payload: {
+        token: string;
+        proxyUrl: string;
+        lastSync: string;
+        query: string;
+      };
     }
   | {
       type: 'SYNC_PROGRESS';
@@ -234,7 +239,7 @@ const initDb = async (dbName: string = '/pinboard.db'): Promise<boolean> => {
 
     // Restore session from metadata
     const meta = db.exec({
-      sql: "SELECT key, value FROM metadata WHERE key IN ('last_full_sync_time', 'auth_token', 'proxy_url')",
+      sql: "SELECT key, value FROM metadata WHERE key IN ('last_full_sync_time', 'auth_token', 'proxy_url', 'query')",
       returnValue: 'resultRows',
       rowMode: 'object',
     });
@@ -278,6 +283,7 @@ const initDb = async (dbName: string = '/pinboard.db'): Promise<boolean> => {
           lastSync: session.last_full_sync_time || '',
           token: session.auth_token || '',
           proxyUrl: session.proxy_url || '',
+          query: session.query || '',
         },
       });
     }

@@ -1,6 +1,6 @@
 {
   "name": "pingolin-pwa",
-  "version": "3.0.22",
+  "version": "3.1.2",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "build:ts": "tsc -p tsconfig.json",
     "build:elm": "elm make src/Main.elm --output=public/main.js --optimize && mkdir -p dist && cp -rv public/* dist/ && touch dist/.nojekyll",
     "build": "npm run build:ts && npm run build:elm",
-    "test:e2e": "playwright test tests/fortress.spec.ts",
+    "test:e2e": "npm run build:elm && playwright test tests/fortress.spec.ts",
     "test:unit": "vitest run tests/sync-worker.spec.js",
     "test": "npm run test:unit && npm run test:e2e"
   },
