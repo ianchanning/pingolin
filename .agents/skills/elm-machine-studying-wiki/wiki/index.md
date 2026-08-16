@@ -65,4 +65,5 @@
 - [[Fixing-State-Loss-in-Federated-Models]] - How to properly integrate worker responses into nested domain models.
 - [[tools/Hard-Won-Wisdom]] - Shell scripting word-splitting, recursive backups, and test ghosting.
 - [[Verification-Rituals]] - The discipline of the single-test run.
+- [[concepts/The-Compiler-as-Sovereign-Pirate]] - Ruthless benevolence, zero runtime crashes, and empathetic refactoring guidance.
 - [[concepts/Sync-State-Machine]] - The "General" of the app: SyncEnv and SyncPhase.

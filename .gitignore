@@ -32,4 +32,6 @@ logs/
 .mypy_cache/
 .ruff_cache/
 # obsidian
-wiki/.obsidian/workspace.json
+.obsidian/
+**/.obsidian/
+wiki/.obsidian/

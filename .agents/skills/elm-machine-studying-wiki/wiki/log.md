@@ -125,3 +125,7 @@ This is an append-only chronological log of all major ingests, grimoire law synt
 - Synthesized `wiki/Pingolin-Federated-Domain-Architecture.md` from `roadmap-v5-domain-migration.md` (federated state ownership: Auth, Archive, BookmarkForm, Sync via updateWith delegation).
 - Synthesized `wiki/Pingolin-Universal-Testing-Fortress.md` from `004-testing-scenarios.md` (black-box E2E Playwright architecture, Page Object Models, proxy simulator routing).
 - Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] revision | The Compiler as Sovereign Pirate Grimoire Upgrade
+- Upgraded `wiki/concepts/The-Compiler-as-Sovereign-Pirate.md` into a full 4-part mental model grimoire integrating Evan Czaplicki's Compiler Empathy thesis, 300-issue error taxonomy, and fearless refactoring workflows.
+- Linked in `wiki/index.md`.
