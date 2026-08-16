@@ -54,6 +54,6 @@ When you encounter a new compiler error in the future:
 
 ## 5. Reference Material
 If you lose your conceptual footing, use your read tools to parse the foundational texts:
-- `.agents/skills/elm-machine-studying-wiki/raw/machine-studying.md` (To understand why you must minimize inference tokens).
-- `.agents/skills/elm-machine-studying-wiki/raw/llm-wiki.md` (To understand how to structure your markdown knowledge base).
-- `.agents/skills/elm-machine-studying-wiki/raw/recursive-language-models.md` (To understand how to structure your agent interactions).
+- `.agents/skills/elm-machine-studying-wiki/wiki/raw/machine-studying.md` (To understand why you must minimize inference tokens).
+- `.agents/skills/elm-machine-studying-wiki/wiki/raw/llm-wiki.md` (To understand how to structure your markdown knowledge base).
+- `.agents/skills/elm-machine-studying-wiki/wiki/raw/recursive-language-models.md` (To understand how to structure your agent interactions).
