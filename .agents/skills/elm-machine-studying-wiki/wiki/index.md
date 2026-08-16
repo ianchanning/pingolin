@@ -54,6 +54,7 @@
 - [[Catastrophic-Restoration]] - When to stop editing and start restoring.
 
 ## 🪞 Reflections & Debriefs
+- [[reflections/Machine-Studying-Synthesis-Retrospective]] - Theoretical synthesis of Machine Studying, LLM Wiki, and future horizons.
 - [[reflections/Option-B-Easy-Mode-Debrief]] - Honest post-mortem: what was cheated, what was learned, Hard Mode protocol.
 
 ## 🛠️ Rituals & RUDs (Project Specific)

@@ -113,3 +113,8 @@ This is an append-only chronological log of all major ingests, grimoire law synt
 - Synthesized `wiki/Antipattern-Component-Hierarchies.md` from `wiki/raw/docs/structuring-web-apps-component-pitfalls.md` (banishing React-style stateful components, flat page models, pure stateless view functions).
 - Synthesized `wiki/Antipattern-Extensible-Records.md` from `wiki/raw/docs/extensible-record-pitfalls.md` (banning extensible records as domain models, preventing compiler error explosions).
 - Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] reflection | Machine Studying & LLM Wiki Synthesis Retrospective
+- Synthesized `wiki/reflections/Machine-Studying-Synthesis-Retrospective.md` analyzing the theoretical collapse of inference token costs via pre-computed cognitive compilation.
+- Codified the 4 strategic future horizons: Automated Wiki-Lint (`wiki-lint`), Self-Healing Error Ingestion, StudyBench Empirical Benchmarking, and Pinboard Codebase Application.
+- Updated `wiki/index.md` and enhanced `.agents/skills/elm-machine-studying-wiki/SKILL.md`.

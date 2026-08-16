@@ -46,15 +46,26 @@ When activated, you must execute the following protocol in exact order:
 3. Format: `- [[Concept-Name]] - Short, 10-word description of the rule.`
 4. *WARNING:* Keep the index description incredibly short. This index lives permanently in your `<SYSTEM_STATE>`, so token bloat here is lethal.
 
-## 4. The Progressive Disclosure Retrieval (How to Recall)
-When you encounter a new compiler error in the future:
-1. Scan your `<SYSTEM_STATE>` for `.agents/skills/elm-machine-studying-wiki/wiki/index.md` contents.
-2. If a description matches the vibe of your current error, DO NOT GUESS.
-3. Use `view_file('.agents/skills/elm-machine-studying-wiki/wiki/[Concept-Name].md')` to load the specific law into your active context.
-4. Execute your code fix based on the retrieved law.
+## 4. The Progressive Disclosure Retrieval & Transfer Loop (How to Recall & Apply)
+When you encounter a coding challenge, compiler error, or architectural refactor in the future:
+1. **Scan Peripheral Vision (`wiki/index.md`):** Look through the 10-word summary table in `wiki/index.md`.
+2. **Targeted Retrieval (Never Guess):** DO NOT attempt stochastic trial-and-error. Call `view_file('wiki/[Concept-Name].md')` to load the exact Sovereign Law and Right/Wrong code pattern into active context.
+3. **Execute Defensively:** Implement the surgical fix strictly aligned with the retrieved Elm 0.19.1 mental model.
 
-## 5. Reference Material
+## 5. The Wiki Health & Linting Cycle (`wiki-lint`)
+Periodically or following major batch additions, perform health audits on the knowledge graph:
+1. **Orphan & Broken Link Detection:** Verify that every markdown file in `wiki/` has a corresponding link in `wiki/index.md` and that all `[[Wiki-Links]]` resolve to valid files.
+2. **Contradiction Resolution:** Ensure newer grimoires supersede obsolete assumptions. (e.g., Elm 0.19.1 breaking changes overrule any legacy 0.18 syntax).
+3. **Index Compactness:** Enforce that entries in `wiki/index.md` remain under 10-12 words to preserve the token-efficient peripheral vision invariant.
+
+## 6. The Machine Studying Invariant
+As proven in `wiki/reflections/Machine-Studying-Synthesis-Retrospective.md`:
+$$\text{Expertise} = \frac{\text{Task Accuracy}}{\text{Inference Compute (Tokens)}}$$
+Never bleed inference tokens re-deriving what has already been compiled into the grimoire.
+
+## 7. Reference Material
 If you lose your conceptual footing, use your read tools to parse the foundational texts:
-- `.agents/skills/elm-machine-studying-wiki/wiki/raw/machine-studying.md` (To understand why you must minimize inference tokens).
-- `.agents/skills/elm-machine-studying-wiki/wiki/raw/llm-wiki.md` (To understand how to structure your markdown knowledge base).
-- `.agents/skills/elm-machine-studying-wiki/wiki/raw/recursive-language-models.md` (To understand how to structure your agent interactions).
+- `wiki/raw/machine-studying.md` (Jacob Li: Converting a declarative corpus into test-time expertise).
+- `wiki/raw/llm-wiki.md` (Andrej Karpathy: The 3-layer persistent wiki architecture).
+- `wiki/raw/recursive-language-models.md` (RLM: Recursive language models and external cognitive artifacts).
+- `wiki/reflections/Machine-Studying-Synthesis-Retrospective.md` (Retrospective synthesis of the 9 batches).
