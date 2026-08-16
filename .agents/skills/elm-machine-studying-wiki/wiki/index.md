@@ -1,5 +1,13 @@
 # Pinboard Reorg Wiki Index
 
+## 📚 Sources & Curriculum
+- [[raw/sources]] - Master curriculum manifest and source ingestion tracker.
+- [[raw/llm-wiki]] - Architecture and operating principles for persistent LLM knowledge bases.
+- [[raw/machine-studying]] - Theory of token minimization and autonomous machine expertise.
+- [[raw/recursive-language-models]] - Mechanics of recursive agent loops and grimoire creation.
+- [[raw/the-great-collapse]] - Historical post-mortem of catastrophic state loss and recovery.
+- [[log]] - Chronological append-only timeline of knowledge base milestones.
+
 ## 🏛️ Philosophical Pillars
 - [[The-Gospel-of-Glorious-Struggles]] - On the necessity of friction and the beauty of the struggle.
 
