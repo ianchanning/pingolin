@@ -128,6 +128,21 @@ Ingest these sources into `wiki/raw/` as markdown files, talk transcripts, or re
 
 ---
 
+## 10. Pingolin Architectural Specs & Migration Blueprints (`cat:specs`)
+*The living engineering specifications of the Pinboard PWA migration.*
+
+| Status | Title / Topic | Type | Link / Source | Key Concepts |
+| :--- | :--- | :--- | :--- | :--- |
+| `[x]` | **SPEC-002: Stabilization & Validation** | Spec | `wiki/raw/specs/002-stabilization-and-validation.md` | Initial SQLite stability, test scenarios, and error bounds |
+| `[x]` | **SPEC-003: Sync V2 Engine** | Spec | `wiki/raw/specs/003-sync-v2.md` | Fast bootstrap, cursor crawl background hydration, dates sentinel |
+| `[x]` | **SPEC-004: Testing Scenarios** | Spec | `wiki/raw/specs/004-testing-scenarios.md` | POM page objects, mock strategy, black-box E2E test rituals |
+| `[x]` | **Roadmap V3: The Great Lobotomy** | Architecture | `wiki/raw/specs/roadmap-v3-the-lobotomy.md` | Dumb muscle RPC worker, Elm Sovereign General state machine |
+| `[x]` | **Roadmap V4: Monolith Refactor** | Architecture | `wiki/raw/specs/roadmap-v4-refactor.md` | Extracting Rpc.elm and Sync.elm from Main.elm |
+| `[x]` | **Roadmap V5: Sovereign Domain Migration** | Architecture | `wiki/raw/specs/roadmap-v5-domain-migration.md` | Federated domain modules: Auth, Archive, BookmarkForm |
+| `[x]` | **Core Requirements & Roadmap** | Specs | `wiki/raw/specs/core-requirements-pwa.md` · `implementation-roadmap.md` | 30Y zero-maintenance PWA standards and sync lifecycle |
+
+---
+
 ## Ingestion Pipelines & Protocols
 
 1. **Talk Transcripts:** For YouTube talks (e.g., *The Life of a File*, *Making Impossible States Impossible*), extract transcripts via `yt-dlp --write-auto-sub --skip-download` into `wiki/raw/transcripts/`.

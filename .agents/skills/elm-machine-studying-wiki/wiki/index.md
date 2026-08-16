@@ -58,6 +58,10 @@
 - [[reflections/Option-B-Easy-Mode-Debrief]] - Honest post-mortem: what was cheated, what was learned, Hard Mode protocol.
 
 ## 🛠️ Rituals & RUDs (Project Specific)
+- [[Pingolin-RPC-Spinal-Cord]] - Dumb muscle worker, correlated request IDs, and Elm Sovereign General.
+- [[Pingolin-Sync-Engine-V2]] - Fast bootstrap, background cursor crawl, and QLPIG Dates reconciliation sentinel.
+- [[Pingolin-Federated-Domain-Architecture]] - Modular state ownership across Auth, Archive, BookmarkForm, and Sync.
+- [[Pingolin-Universal-Testing-Fortress]] - Language-agnostic black-box E2E testing with Page Object Models.
 - [[Fixing-State-Loss-in-Federated-Models]] - How to properly integrate worker responses into nested domain models.
 - [[tools/Hard-Won-Wisdom]] - Shell scripting word-splitting, recursive backups, and test ghosting.
 - [[Verification-Rituals]] - The discipline of the single-test run.

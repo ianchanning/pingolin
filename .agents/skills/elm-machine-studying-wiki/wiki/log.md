@@ -118,3 +118,10 @@ This is an append-only chronological log of all major ingests, grimoire law synt
 - Synthesized `wiki/reflections/Machine-Studying-Synthesis-Retrospective.md` analyzing the theoretical collapse of inference token costs via pre-computed cognitive compilation.
 - Codified the 4 strategic future horizons: Automated Wiki-Lint (`wiki-lint`), Self-Healing Error Ingestion, StudyBench Empirical Benchmarking, and Pinboard Codebase Application.
 - Updated `wiki/index.md` and enhanced `.agents/skills/elm-machine-studying-wiki/SKILL.md`.
+
+## [2026-08-16] synthesis | Batch 10: Pingolin Architectural Specs & Migration Blueprints (4 Grimoires)
+- Synthesized `wiki/Pingolin-RPC-Spinal-Cord.md` from `roadmap-v3-the-lobotomy.md` & `roadmap-v4-refactor.md` (dumb muscle worker, correlated request IDs, Elm Sovereign General).
+- Synthesized `wiki/Pingolin-Sync-Engine-V2.md` from `003-sync-v2.md` (fast bootstrap, cursor crawl background hydration, dates sentinel reconciliation).
+- Synthesized `wiki/Pingolin-Federated-Domain-Architecture.md` from `roadmap-v5-domain-migration.md` (federated state ownership: Auth, Archive, BookmarkForm, Sync via updateWith delegation).
+- Synthesized `wiki/Pingolin-Universal-Testing-Fortress.md` from `004-testing-scenarios.md` (black-box E2E Playwright architecture, Page Object Models, proxy simulator routing).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
