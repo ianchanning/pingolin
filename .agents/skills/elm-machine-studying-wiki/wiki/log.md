@@ -61,3 +61,55 @@ This is an append-only chronological log of all major ingests, grimoire law synt
 ## [2026-08-16] ingest | Batch Ingested 2 Raw Sources
 - Ingested raw source: Repo: elm/error-message-catalog
 - Ingested raw source: Issues: elm/error-message-catalog issues archive
+
+## [2026-08-16] synthesis | Batch 1: Philosophy & Mental Models (4 Grimoires)
+- Synthesized `wiki/The-Life-of-a-File.md` from `wiki/raw/transcripts/the-life-of-a-file-evan-czaplicki.md` (organic file growth, data-centric module boundaries, eliminating micro-TEA anti-patterns).
+- Synthesized `wiki/Elm-Pragmatism-Over-Purity.md` from `wiki/raw/transcripts/lets-be-mainstream-evan-czaplicki.md` (accessible semantics, compiler empathy, zero runtime exceptions over academic typeclasses/monads).
+- Synthesized `wiki/Elm-Language-Evolution-Principles.md` from `wiki/raw/transcripts/what-is-success-evan-czaplicki.md` (ecosystem sustainability, deliberate API design, preventing maintenance fatigue).
+- Synthesized `wiki/Cognitive-Load-in-Elm.md` from `wiki/raw/transcripts/code-is-the-easy-part-evan-czaplicki.md` (minimizing cognitive load through explicit architectures and transparent data flow).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] synthesis | Batch 2: Modern Syntax & 0.19 Standards (3 Grimoires)
+- Synthesized `wiki/Elm-019-Syntax-Ground-Truth.md` from `wiki/raw/docs/elm-core-language-guide.md` (let-in scoping, simple variable record update bases, currying, pipeline operators).
+- Synthesized `wiki/Types-as-Sets.md` from `wiki/raw/docs/types-as-sets.md` (algebraic data cardinality, product multiplication vs sum addition, eliminating boolean blindness).
+- Synthesized `wiki/Elm-019-Breaking-Changes.md` from `wiki/raw/docs/elm-0190-announcement-upgrade.md` (abolition of polymorphic toString, elm/* package namespace migration, compiler DCE and --optimize rules).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] synthesis | Batch 3: The Elm Architecture (TEA) & Lifecycles (4 Grimoires)
+- Synthesized `wiki/The-Elm-Architecture-Core.md` from `wiki/raw/docs/the-elm-architecture-guide.md` (pure message dispatch, model reducer invariants, managed command descriptions).
+- Synthesized `wiki/Browser-Program-Variants.md` from `wiki/raw/docs/elmbrowser-specification.md` (topologies, signatures, and capabilities of sandbox, element, document, and application).
+- Synthesized `wiki/SPA-Navigation-and-Url-Parsing.md` from `wiki/raw/docs/navigation-url-parsing.md` (Browser.UrlRequest state machine, Nav.Key security invariant, Url.Parser combinators).
+- Synthesized `wiki/Canonical-SPA-Architecture.md` from `wiki/raw/docs/elm-spa-realworld-example-app.md` (RealWorld reference architecture, page module delegation, shared Viewer/Session state).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] synthesis | Batch 4: Type-Driven Design & State Modeling (3 Grimoires)
+- Synthesized `wiki/Making-Impossible-States-Impossible.md` from `wiki/raw/transcripts/making-impossible-states-impossible-richard-feldman.md` (structural validation, phase custom types, Zipper collections).
+- Synthesized `wiki/RemoteData-Pattern.md` from `wiki/raw/docs/how-elm-slays-a-ui-antipattern-kris-jenkins.md` (4-state disjoint union lifecycle, eliminating empty list and 0-count UI flashes).
+- Synthesized `wiki/Parse-Dont-Validate-in-Elm.md` from `wiki/raw/docs/parse-dont-validate-elm-radio-20.md` (boundary parsing, opaque domain types, preventing shotgun parsing).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] synthesis | Batch 5: JSON Decoders & Boundary Parsing (2 Grimoires)
+- Synthesized `wiki/JSON-Decoding-Primitives.md` from `wiki/raw/docs/guide-json-decoding-encoding.md` (primitive decoders, path selectors, map2..map8, explicit encoding).
+- Synthesized `wiki/JSON-Pipeline-Decoding.md` from `wiki/raw/docs/elm-json-decode-pipeline.md` & `wiki/raw/docs/elmjson-package-documentation.md` (pipeline decoders, overcoming map8 limit, andThen dependent decoding, custom error validation).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] synthesis | Batch 6: JS Interop, Ports & Side-Effects (2 Grimoires)
+- Synthesized `wiki/JS-Interop-Ports-and-Flags.md` from `wiki/raw/docs/javascript-interop-guide.md` (resilient Value flags, asynchronous typed ports, Custom Element DOM escapes).
+- Synthesized `wiki/HTTP-Tasks-and-Commands.md` from `wiki/raw/docs/elmhttp-specification.md` (declarative Http.expectJson, exhaustive Http.Error recovery, atomic Task.andThen pipelines).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] synthesis | Batch 7: Compiler Empathy & Error Anatomy (3 Grimoires)
+- Synthesized `wiki/Compiler-Empathy-and-Refactoring.md` from `wiki/raw/docs/compiler-errors-for-humans-evan-czaplicki.md` & `compilers-as-assistants-evan-czaplicki.md` (empathetic diagnostic formatting, compiler-driven refactoring workflows).
+- Synthesized `wiki/Structured-Compiler-Error-Parsing.md` from `wiki/raw/docs/elm-json-error-output-specification.md` (elm make --report=json parsing, automated agent AST evaluation loops).
+- Synthesized `wiki/concepts/Compiler-Error-Taxonomy.md` from 300 issues in `wiki/raw/error-catalog/issues/` (5 diagnostic families: parsing, scope, type inference, exhaustiveness, optimization).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] synthesis | Batch 8: Core Ecosystem & Tooling (2 Grimoires)
+- Synthesized `wiki/Elm-Core-Standard-Library.md` from `wiki/raw/docs/elmcore-module-specs.md` (total collection operations, Dict comparable restrictions, O(1) list prepend disciplines).
+- Synthesized `wiki/Elm-Testing-and-Review-Discipline.md` from `wiki/raw/docs/elm-explorationstest.md` & `wiki/raw/docs/jfmengelselm-review.md` (fuzz property testing with Fuzz/Expect, static architectural rules with elm-review).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.
+
+## [2026-08-16] synthesis | Batch 9: Anti-Patterns & False Friends (2 Grimoires)
+- Synthesized `wiki/Antipattern-Component-Hierarchies.md` from `wiki/raw/docs/structuring-web-apps-component-pitfalls.md` (banishing React-style stateful components, flat page models, pure stateless view functions).
+- Synthesized `wiki/Antipattern-Extensible-Records.md` from `wiki/raw/docs/extensible-record-pitfalls.md` (banning extensible records as domain models, preventing compiler error explosions).
+- Updated `wiki/index.md` and compiled `wiki/raw/sources.md` status.

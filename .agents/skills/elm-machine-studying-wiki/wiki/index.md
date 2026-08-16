@@ -10,8 +10,33 @@
 
 ## 🏛️ Philosophical Pillars
 - [[The-Gospel-of-Glorious-Struggles]] - On the necessity of friction and the beauty of the struggle.
+- [[The-Life-of-a-File]] - Grow files organically; split modules around invariant data, not components.
+- [[Elm-Pragmatism-Over-Purity]] - Simpler foundations produce simpler code, prioritizing human accessibility over purity.
+- [[Elm-Language-Evolution-Principles]] - Deliberate API distillation ensures long-term ecosystem stability over rapid churn.
+- [[Cognitive-Load-in-Elm]] - Minimize cognitive load through explicit, readable flows rather than clever abstractions.
 
 ## ⚙️ Technical Laws & Architecture
+- [[Antipattern-Component-Hierarchies]] - Avoid nested stateful component architectures; maintain flat state and pure views.
+- [[Antipattern-Extensible-Records]] - Avoid extensible record overuse; use concrete models and explicit field helpers.
+- [[Elm-Core-Standard-Library]] - Total collection operations, comparable Dict keys, and O(1) list disciplines.
+- [[Elm-Testing-and-Review-Discipline]] - Property-based fuzz testing and compile-time AST rule enforcement via elm-review.
+- [[Compiler-Empathy-and-Refactoring]] - Compiler diagnostics as actionable refactoring guides for fearless changes.
+- [[Structured-Compiler-Error-Parsing]] - Machine-readable JSON diagnostic parsing for automated agent self-correction.
+- [[concepts/Compiler-Error-Taxonomy]] - The 5 diagnostic families and recovery patterns from 300 catalog issues.
+- [[JS-Interop-Ports-and-Flags]] - Resilient Value flags, asynchronous ports, and Web Component custom elements.
+- [[HTTP-Tasks-and-Commands]] - Declarative Http.expectJson, exhaustive Http.Error handling, and Task composition.
+- [[JSON-Decoding-Primitives]] - Explicit decoupled decoders and encoders with structural error reporting.
+- [[JSON-Pipeline-Decoding]] - Arbitrary record decoding and dependent andThen validation pipelines.
+- [[Making-Impossible-States-Impossible]] - Encode invariants into data structures to eliminate invalid states at compile time.
+- [[RemoteData-Pattern]] - Model async data lifecycles as a four-state disjoint union.
+- [[Parse-Dont-Validate-in-Elm]] - Transform untrusted data into verified opaque domain types at boundaries.
+- [[The-Elm-Architecture-Core]] - Model-Update-View loop with pure message dispatch and managed commands.
+- [[Browser-Program-Variants]] - Capabilities and topologies of sandbox, element, document, and application.
+- [[SPA-Navigation-and-Url-Parsing]] - UrlRequest interception, Navigation.Key safety, and Url.Parser combinators.
+- [[Canonical-SPA-Architecture]] - Production SPA structure: page module delegation with shared session.
+- [[Elm-019-Syntax-Ground-Truth]] - Pure expressions, curried functions, simple record updates, and exhaustive patterns.
+- [[Types-as-Sets]] - Custom types create disjoint sets, making invalid domain states impossible.
+- [[Elm-019-Breaking-Changes]] - Elimination of toString, package migration to elm/*, and DCE invariants.
 - [[Elm-Sovereign-Laws]] - Syntactic constraints and compiler interpretation.
 - [[Elm-Where-Clauses]] - Parser rule for let bindings and the ghost server test pitfall.
 - [[Elm-Named-Records]] - Named types are mandatory for nested record updates.
