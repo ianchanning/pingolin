@@ -1,5 +1,50 @@
 # Pinboard Reorg Wiki Index
 
+```mermaid
+graph TD
+    subgraph "🏛️ Philosophy & Architecture (Batches 1 - 3)"
+        F1[The-Life-of-a-File]
+        F2[Elm-Pragmatism-Over-Purity]
+        F3[Elm-Language-Evolution-Principles]
+        F4[Cognitive-Load-in-Elm]
+        F5[Elm-019-Syntax-Ground-Truth]
+        F6[Types-as-Sets]
+        F7[Elm-019-Breaking-Changes]
+        F8[The-Elm-Architecture-Core]
+        F9[Browser-Program-Variants]
+        F10[SPA-Navigation-and-Url-Parsing]
+        F11[Canonical-SPA-Architecture]
+    end
+
+    subgraph "📐 Type Systems, Decoders & Boundaries (Batches 4 - 6)"
+        T1[Making-Impossible-States-Impossible]
+        T2[RemoteData-Pattern]
+        T3[Parse-Dont-Validate-in-Elm]
+        T4[JSON-Decoding-Primitives]
+        T5[JSON-Pipeline-Decoding]
+        T6[JS-Interop-Ports-and-Flags]
+        T7[HTTP-Tasks-and-Commands]
+    end
+
+    subgraph "🔍 Diagnostics, Ecosystem & Anti-Patterns (Batches 7 - 9)"
+        D1[Compiler-Empathy-and-Refactoring]
+        D2[Structured-Compiler-Error-Parsing]
+        D3[Compiler-Error-Taxonomy]
+        D4[Elm-Core-Standard-Library]
+        D5[Elm-Testing-and-Review-Discipline]
+        D6[Antipattern-Component-Hierarchies]
+        D7[Antipattern-Extensible-Records]
+    end
+
+    subgraph "🏰 Pingolin Application Architecture & Invariants (Batch 10)"
+        P1[Pingolin-RPC-Spinal-Cord]
+        P2[Pingolin-Sync-Engine-V2]
+        P3[Pingolin-Federated-Domain-Architecture]
+        P4[Pingolin-Universal-Testing-Fortress]
+        P5[Retrospective: Machine-Studying-Synthesis-Retrospective]
+    end
+```
+
 ## 📚 Sources & Curriculum
 - [[raw/sources]] - Master curriculum manifest and source ingestion tracker.
 - [[raw/llm-wiki]] - Architecture and operating principles for persistent LLM knowledge bases.

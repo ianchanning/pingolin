@@ -9,6 +9,30 @@ As an Elm application expands, developers face two opposing architectural traps:
 - **The React Component-itis Trap:** Splitting every button, sidebar, and dropdown into its own isolated TEA module, causing a nightmare of nested message wrappers (`DropdownMsg SubDropdownMsg (GotItem String)`).
 - **The Sovereign Domain Compromise:** Grouping state into **3-4 major Domain Modules** centered around core business custom types (`Auth.Model`, `Archive.Model`, `BookmarkForm.Model`), while view components remain stateless pure functions.
 
+```mermaid
+graph TD
+    subgraph "Sovereign UI Thread (Elm 0.19.1)"
+        O[Main Orchestrator] --> A[Auth Domain]
+        O --> B[BookmarkForm Domain]
+        O --> C[Archive Domain]
+        O --> S[Sync State Machine]
+        S --> R[Rpc.elm Dispatcher]
+    end
+
+    subgraph "Dumb Muscle Thread (sync-worker.ts)"
+        R -- "Port: { type, id, payload }" --> W[Worker Router]
+        W --> H[RPC_FETCH Proxy]
+        W --> Q[RPC_SQL_QUERY SQLite]
+        W --> T[RPC_SQL_TRANSACTION Batch]
+        W -- "Port: RPC_SUCCESS / RPC_ERROR (id-correlated)" --> R
+    end
+
+    subgraph "Testing Fortress (Playwright E2E)"
+        P[AppPage POM] --> DOM[Browser DOM & data-testid]
+        M[Proxy Route Simulator] --> H
+    end
+```
+
 ---
 
 ## 3. Developer Intent vs. Elm Semantics

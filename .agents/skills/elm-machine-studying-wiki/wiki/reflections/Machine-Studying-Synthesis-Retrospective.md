@@ -35,6 +35,26 @@ By synthesizing 9 batches of raw material into 23 standalone Grimoire pages in `
 | **Ecosystem (`cat:ecosystem`)** | Enforced $O(1)$ cons list construction, comparable `Dict` key serialization, property-based fuzz theorems, and static `elm-review` AST rules. |
 | **Anti-Patterns (`cat:antipatterns`)** | Banned nested TEA micro-components and overused extensible records to prevent message forwarding glue code and diagnostic explosions. |
 
+```mermaid
+timeline
+    title The Architectural Evolution of Pingolin PWA
+    section Epoch 1: The TypeScript Baseline (v2.0.0)
+        Brutal UI & DB Sync : Initial SQLite PWA
+        Fat Sync Worker : Worker controlled all business logic & state
+    section Epoch 2: The Elm Awakening (v3.0.0 - v3.0.12)
+        Elm Rewrite Inception : First TEA loop introduced
+        Boundary Testing : Vitest and Playwright test scaffolding
+    section Epoch 3: The Great Lobotomy (v3.0.13 - v3.0.17)
+        Stripping the Worker : sync-worker.js reduced to dumb I/O RPC muscle
+        Elm as Sovereign General : Elm takes ownership of heartbeat & sync queues
+    section Epoch 4: Monolith Decomposition (v3.0.18 - v3.0.22)
+        Splitting Main.elm : Extracted Rpc.elm, Sync.elm, and Types.elm
+        Wiretap Tests : Boundary contract verification & incremental sync
+    section Epoch 5: Sovereign Domain Architecture (v3.1.0 - v3.1.2)
+        Federated State : Subdivided into Auth, Archive, and BookmarkForm
+        Machine Studying Wiki : 28 Sovereign Grimoires forged & compiled
+```
+
 ---
 
 ## 4. Where We Take This Next: Strategic Horizons
