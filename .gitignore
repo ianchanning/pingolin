@@ -10,6 +10,7 @@ pwa/dist/
 *.db-shm
 *.db-wal
 .aider*
+Session.vim
 pwa/test-results/
 
 # uv ignores

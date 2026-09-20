@@ -607,8 +607,8 @@ viewSearch : Model -> Html Msg
 viewSearch model =
     div [ class "search-chamber" ]
         [ input [ placeholder "Search (exact: #tag, fuzzy: term)", value model.archive.query, onInput (GotArchiveMsg << Archive.SetQuery), attribute "data-testid" "search-input" ] []
-        , button [ attribute "id" "toggle-add-btn", onClick (GotFormMsg BookmarkForm.ToggleAddForm) ] [ text "+" ]
-        , button [ onClick ManualRefresh, class "refresh-btn", attribute "title" "Force Sync" ] [ text "↻" ]
+        , button [ attribute "id" "toggle-add-btn", onClick (GotFormMsg BookmarkForm.ToggleAddForm) ] [ text "Add" ]
+        , button [ onClick ManualRefresh, class "refresh-btn", attribute "title" "Force Sync" ] [ text "Sync" ]
         ]
 
 

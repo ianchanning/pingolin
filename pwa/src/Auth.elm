@@ -1,6 +1,6 @@
 module Auth exposing (Model, Msg(..), init, update, view)
 
-import Html exposing (Html, button, div, input, text)
+import Html exposing (Html, button, div, input, label, text)
 import Html.Attributes exposing (attribute, class, placeholder, value)
 import Html.Events exposing (onClick, onInput)
 
@@ -46,8 +46,14 @@ update msg model =
 view : Model -> (Msg -> msg) -> String -> Html msg
 view model toMsg version =
     div [ class "ritual-controls", attribute "data-testid" "login-container" ]
-        [ input [ placeholder "Auth Token (user:HEX)", value model.token, onInput (toMsg << SetToken), attribute "data-testid" "auth-token" ] []
-        , input [ placeholder "Proxy URL", value model.proxyUrl, onInput (toMsg << SetProxy) ] []
+        [ div [] 
+            [ label [ attribute "for" "auth-token" ] [ text "Auth Token" ]
+            , input [ attribute "id" "auth-token", placeholder "user:HEX", value model.token, onInput (toMsg << SetToken), attribute "data-testid" "auth-token" ] []
+            ]
+        , div [] 
+            [ label [ attribute "for" "proxy-url" ] [ text "Proxy URL" ]
+            , input [ attribute "id" "proxy-url", placeholder "https://...", value model.proxyUrl, onInput (toMsg << SetProxy) ] []
+            ]
         , button [ onClick (toMsg TriggerStartSync), attribute "data-testid" "sync-button" ] [ text "Initialize Sync" ]
         , div [ class "version-tag" ] [ text ("v" ++ version) ]
         ]
