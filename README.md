@@ -118,6 +118,21 @@ Access these commands directly from the Browser Console (F12):
 - `await refreshApp()`: Forces the UI to re-query the database and re-render.
 - `db`: The `DatabaseBridge` instance for manual SQL execution or inspection.
 
+## Release & Versioning
+
+To release a new version of the PWA:
+1. **Bump Version:** Update the version in `pwa/package.json` (e.g., `3.1.2` $\rightarrow$ `3.1.3`).
+2. **Generate Version File:** Run `node pwa/generate-version.js` to synchronize the version into `pwa/public/version.js` (this is also handled by `prebuild` and `predev` scripts).
+3. **Commit Changes:** Commit `pwa/package.json`, `pwa/public/version.js`, and `package-lock.json`.
+4. **Tag Release:** Create a git tag using the format `pingolin-pwa@X.Y.Z`.
+
+Example:
+```bash
+git add pwa/package.json pwa/public/version.js package-lock.json
+git commit -m "bump: v3.1.3"
+git tag pingolin-pwa@3.1.3
+```
+
 ## Principles of the Fortress (30Y Durability)
 - **Zero Reading (0R):** No manuals, no nested menus.
 - **Zero Maintenance (0M):** No server-side databases to patch.
