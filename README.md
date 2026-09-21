@@ -121,8 +121,9 @@ Access these commands directly from the Browser Console (F12):
 ## Release & Versioning
 
 To release a new version of the PWA:
-1. **Bump Version:** Update the version in `pwa/package.json` (e.g., `3.1.2` $\rightarrow$ `3.1.3`).
-2. **Generate Version File:** Run `node pwa/generate-version.js` to synchronize the version into `pwa/public/version.js` (this is also handled by `prebuild` and `predev` scripts).
+0. **Pre-clean:** Commit/stash any existing changes
+1. **Bump Version:** In `/pwa`, run `npm version [major|minor|patch]` to update the version in `pwa/package.json` (e.g., `3.1.2` $\rightarrow$ `3.1.3`).
+2. **Generate Version File:** Run `npm run prebuild & npm run build` to synchronize the version into `pwa/public/version.js`
 3. **Commit Changes:** Commit `pwa/package.json`, `pwa/public/version.js`, and `package-lock.json`.
 4. **Tag Release:** Create a git tag using the format `pingolin-pwa@X.Y.Z`.
 
