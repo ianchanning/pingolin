@@ -80,6 +80,8 @@ graph TD
 - [[SPA-Navigation-and-Url-Parsing]] - UrlRequest interception, Navigation.Key safety, and Url.Parser combinators.
 - [[Canonical-SPA-Architecture]] - Production SPA structure: page module delegation with shared session.
 - [[Elm-019-Syntax-Ground-Truth]] - Pure expressions, curried functions, simple record updates, and exhaustive patterns.
+- [[Nested-Record-Updates]] - Avoid nested record updates in single expressions to prevent parser ambiguity.
+- [[Anonymous-Record-Updates]] - Named types are mandatory for record update syntax (|).
 - [[Types-as-Sets]] - Custom types create disjoint sets, making invalid domain states impossible.
 - [[Elm-019-Breaking-Changes]] - Elimination of toString, package migration to elm/*, and DCE invariants.
 - [[Elm-Sovereign-Laws]] - Syntactic constraints and compiler interpretation.

@@ -216,7 +216,7 @@ update msg model =
                                         [ ( "href", Encode.string model.form.newBookmark.href )
                                         , ( "description", Encode.string model.form.newBookmark.description )
                                         , ( "extended", Encode.string "" )
-                                        , ( "tags", Encode.string model.form.newBookmark.tags )
+                                        , ( "tags", Encode.string (String.join " " model.form.newBookmark.tags) )
                                         , ( "time", Encode.string "2023-10-01T12:00:00Z" )
                                         ]
                                   )
