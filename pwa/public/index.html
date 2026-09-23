@@ -291,6 +291,74 @@
         padding: 4px 10px;
       }
 
+      .tags-input-chamber {
+        position: relative;
+        width: 100%;
+      }
+
+      .tag-suggestions-anchor {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: flex-start !important;
+        z-index: 1000;
+        pointer-events: none;
+        max-width: 100%;
+      }
+
+      .tag-prefix-spacer {
+        visibility: hidden;
+        white-space: pre;
+        font-family: inherit;
+        font-size: 13px;
+        padding-left: 8px;
+        pointer-events: none;
+        flex-shrink: 0;
+      }
+
+      .tag-suggestions-dropdown {
+        pointer-events: auto;
+        display: flex !important;
+        flex-direction: column !important;
+        background: #ffffff;
+        border: 1px solid #aaa;
+        border-radius: 2px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        max-height: 200px;
+        overflow-y: auto;
+        min-width: 150px;
+        max-width: 320px;
+        padding: 2px 0;
+        margin-top: 2px;
+      }
+
+      .add-form button.tag-suggestion-item {
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
+        color: #222 !important;
+        font-family: inherit !important;
+        font-size: 13px !important;
+        font-weight: normal !important;
+        text-transform: none !important;
+        padding: 4px 10px !important;
+        cursor: pointer !important;
+        line-height: 1.4 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        text-align: left !important;
+        display: block !important;
+        box-sizing: border-box !important;
+      }
+
+      .add-form button.tag-suggestion-item:hover {
+        background: #2e496d !important;
+        color: #ffffff !important;
+        filter: none !important;
+      }
+
       .help-btn {
         background: rgba(0, 0, 0, 0.12);
         border: none;

@@ -2019,6 +2019,34 @@ body.error_404 div#main ul li {
   box-sizing: border-box;
 }
 
+.suggested-tags-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: -4px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.tag-suggestion-pill {
+  background: #e8e8ce;
+  border: 1px solid #cc9;
+  border-radius: 3px;
+  color: #369;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 2px 7px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.tag-suggestion-pill:hover {
+  background: #9eb847;
+  color: #fff;
+  border-color: #7b9432;
+}
+
+
 .archive-scroll-container {
   flex-grow: 1;
   overflow-y: auto;

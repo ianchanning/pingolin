@@ -216,7 +216,7 @@ update msg model =
                                         [ ( "href", Encode.string model.form.newBookmark.href )
                                         , ( "description", Encode.string model.form.newBookmark.description )
                                         , ( "extended", Encode.string "" )
-                                        , ( "tags", Encode.string (String.join " " model.form.newBookmark.tags) )
+                                        , ( "tags", Encode.string model.form.newBookmark.tags )
                                         , ( "time", Encode.string "2023-10-01T12:00:00Z" )
                                         ]
                                   )
@@ -286,11 +286,11 @@ update msg model =
                             , viewportHeight = model.archive.viewportHeight
                             }
 
+                        form =
+                            model.form
+
                         nextForm =
-                            { newBookmark = model.form.newBookmark
-                            , showAddForm = model.form.showAddForm
-                            , tagSuggestions = nextEnv.tagSuggestions
-                            }
+                            { form | tagSuggestions = nextEnv.tagSuggestions }
                     in
                     ( { model
                         | auth = nextAuth
@@ -413,11 +413,11 @@ update msg model =
                     , viewportHeight = model.archive.viewportHeight
                     }
 
+                form =
+                    model.form
+
                 nextForm =
-                    { newBookmark = model.form.newBookmark
-                    , showAddForm = model.form.showAddForm
-                    , tagSuggestions = nextEnv.tagSuggestions
-                    }
+                    { form | tagSuggestions = nextEnv.tagSuggestions }
             in
             ( { model
                 | auth = nextAuth
@@ -501,11 +501,11 @@ update msg model =
                     , viewportHeight = model.archive.viewportHeight
                     }
 
+                form =
+                    model.form
+
                 nextForm =
-                    { newBookmark = model.form.newBookmark
-                    , showAddForm = model.form.showAddForm
-                    , tagSuggestions = nextEnv.tagSuggestions
-                    }
+                    { form | tagSuggestions = nextEnv.tagSuggestions }
             in
             ( { model
                 | auth = nextAuth

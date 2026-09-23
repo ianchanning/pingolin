@@ -80,8 +80,8 @@ graph TD
 - [[SPA-Navigation-and-Url-Parsing]] - UrlRequest interception, Navigation.Key safety, and Url.Parser combinators.
 - [[Canonical-SPA-Architecture]] - Production SPA structure: page module delegation with shared session.
 - [[Elm-019-Syntax-Ground-Truth]] - Pure expressions, curried functions, simple record updates, and exhaustive patterns.
-- [[Nested-Record-Updates]] - Avoid nested record updates in single expressions to prevent parser ambiguity.
-- [[Anonymous-Record-Updates]] - Named types are mandatory for record update syntax (|).
+- [[Nested-Record-Updates]] - Decouple nested updates to local variables for simple base identifiers.
+- [[Anonymous-Record-Updates]] - Debunking the named type myth; update requires simple variable identifiers.
 - [[Types-as-Sets]] - Custom types create disjoint sets, making invalid domain states impossible.
 - [[Elm-019-Breaking-Changes]] - Elimination of toString, package migration to elm/*, and DCE invariants.
 - [[Elm-Sovereign-Laws]] - Syntactic constraints and compiler interpretation.
@@ -101,6 +101,9 @@ graph TD
 - [[Catastrophic-Restoration]] - When to stop editing and start restoring.
 
 ## 🪞 Reflections & Debriefs
+- [[reflections/Gemma-Elm-Compiler-Struggle-CoT]] - Forensic CoT analysis of Gemma's struggle with Elm record syntax.
+- [[reflections/The-Elm-Wall]] - The psychology of colliding with the compiler's absolute correctness.
+- [[reflections/The-Rituals-of-Nyx]] - Operational rituals for navigating chaotic codebases with high velocity.
 - [[reflections/Machine-Studying-Synthesis-Retrospective]] - Theoretical synthesis of Machine Studying, LLM Wiki, and future horizons.
 - [[reflections/Option-B-Easy-Mode-Debrief]] - Honest post-mortem: what was cheated, what was learned, Hard Mode protocol.
 
