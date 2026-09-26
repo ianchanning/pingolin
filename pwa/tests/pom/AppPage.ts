@@ -1,5 +1,6 @@
 import { Page, Locator, expect } from '@playwright/test';
 import { BookmarkItem } from './BookmarkItem';
+import { AddForm } from './AddForm';
 
 export class AppPage {
   readonly page: Page;
@@ -11,6 +12,7 @@ export class AppPage {
   readonly authTokenInput: Locator;
   readonly syncButton: Locator;
   readonly toggleAddButton: Locator;
+  readonly addForm: AddForm;
 
   constructor(page: Page) {
     this.page = page;
@@ -22,6 +24,7 @@ export class AppPage {
     this.authTokenInput = page.getByTestId('auth-token');
     this.syncButton = page.getByTestId('sync-button');
     this.toggleAddButton = page.locator('#toggle-add-btn');
+    this.addForm = new AddForm(page);
   }
 
   async goto(url?: string) {

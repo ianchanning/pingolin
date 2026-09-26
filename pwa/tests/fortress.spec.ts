@@ -2140,4 +2140,84 @@ test.describe('The Universal Fortress', () => {
       'Scenario 31 passed: New device correctly gets START_HYDRATION (full pull).'
     );
   });
+
+  test('Scenario 35: The Caret-Tracking Autocomplete Ritual', async ({
+    page,
+  }) => {
+    const app = new AppPage(page);
+    const dbName = `test-ac-${Math.random().toString(36).substring(7)}.db`;
+
+    await app.mockProxy('/posts/recent', []);
+    await app.mockProxy('/posts/all', [
+      {
+        href: 'https://example.com/1',
+        description: 'Existing Rust Work',
+        tags: 'rust systems programming',
+        time: '2023-10-01T11:00:00Z',
+      },
+      {
+        href: 'https://example.com/2',
+        description: 'Elm Architecture Guide',
+        tags: 'elm frontend functional',
+        time: '2023-10-01T11:05:00Z',
+      },
+    ]);
+    await app.mockProxy('/posts/update', {
+      update_time: '2023-10-01T13:00:00Z',
+    });
+    await app.mockProxy('/posts/dates', { dates: {} });
+
+    await page.goto(`/?dbName=${dbName}`);
+    await app.login('test:TOKEN');
+    await app.expectBookmarkCount(2, { timeout: 10000 });
+
+    // 1. Open Add Form and assert Silence Invariant (hidden by default)
+    await app.toggleAddForm();
+    await app.addForm.expectSuggestionsHidden();
+
+    // 2. Fill URL and Title
+    await app.addForm.urlInput.fill('https://example.com/3');
+    await app.addForm.titleInput.fill('New Hybrid App');
+
+    // 3. Type prefix for Tag 1: "ru"
+    await app.addForm.tagsInput.click();
+    await app.addForm.tagsInput.type('ru');
+
+    // Dropdown must become visible and contain "rust"
+    await app.addForm.expectSuggestionsVisible({ timeout: 10000 });
+    const suggestions1 = await app.addForm.getVisibleSuggestions();
+    expect(suggestions1).toContain('rust');
+
+    // 4. Select "rust" from dropdown
+    await app.addForm.selectSuggestion('rust');
+
+    // Assert input has "rust " and dropdown is dismissed (Silence on trailing space)
+    await expect(app.addForm.tagsInput).toHaveValue('rust ');
+    await app.addForm.expectSuggestionsHidden();
+
+    // 5. Type prefix for Tag 2: "el" (multi-token caret tracking)
+    await app.addForm.tagsInput.click();
+    await app.addForm.tagsInput.type('el');
+
+    // Dropdown must become visible again and contain "elm"
+    await app.addForm.expectSuggestionsVisible();
+    const suggestions2 = await app.addForm.getVisibleSuggestions();
+    expect(suggestions2).toContain('elm');
+
+    // 6. Select "elm" from dropdown
+    await app.addForm.selectSuggestion('elm');
+
+    // Assert input has "rust elm " and dropdown is dismissed
+    await expect(app.addForm.tagsInput).toHaveValue('rust elm ');
+    await app.addForm.expectSuggestionsHidden();
+
+    // 7. Submit bookmark and verify local-first reactive UI
+    await app.addForm.submit();
+    await app.expectBookmarkCount(3, { timeout: 5000 });
+
+    // Assert the new bookmark has both selected tags
+    const newBookmark = app.getBookmarkItem(0);
+    await newBookmark.expectTitle('New Hybrid App');
+    await newBookmark.expectTags(['rust', 'elm']);
+  });
 });
